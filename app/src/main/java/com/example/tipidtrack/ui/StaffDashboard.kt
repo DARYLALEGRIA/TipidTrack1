@@ -117,22 +117,22 @@ fun StaffDashboard(
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.9f))
+                colors = CardDefaults.cardColors(containerColor = Color.White)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(text = "Aggregated Overview", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Color(0xFF1976D2))
                     Spacer(modifier = Modifier.height(12.dp))
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Total System Spending:")
-                        Text(currencyFormatter.format(totalSpending), fontWeight = FontWeight.Bold)
+                        Text("Total System Spending:", color = Color.Black)
+                        Text(currencyFormatter.format(totalSpending), fontWeight = FontWeight.Bold, color = Color.Black)
                     }
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Average Spending per Student:")
-                        Text(currencyFormatter.format(averageSpending), fontWeight = FontWeight.Bold)
+                        Text("Average Spending per Student:", color = Color.Black)
+                        Text(currencyFormatter.format(averageSpending), fontWeight = FontWeight.Bold, color = Color.Black)
                     }
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Active Tracked Students:")
-                        Text("$uniqueUsersCount", fontWeight = FontWeight.Bold)
+                        Text("Active Tracked Students:", color = Color.Black)
+                        Text("$uniqueUsersCount", fontWeight = FontWeight.Bold, color = Color.Black)
                     }
                 }
             }
@@ -153,14 +153,14 @@ fun StaffDashboard(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(vertical = 4.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFFBBDEFB).copy(alpha = 0.7f))
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1976D2).copy(alpha = 0.1f))
                 ) {
                     Row(
-                        modifier = Modifier.padding(16.dp),
+                        modifier = Modifier.padding(16.dp).fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text(text = category ?: "Unknown", fontWeight = FontWeight.Medium)
-                        Text(text = currencyFormatter.format(amount), fontWeight = FontWeight.Bold, color = Color(0xFF2D4B8E))
+                        Text(text = category ?: "Unknown", fontWeight = FontWeight.Medium, color = Color.Black)
+                        Text(text = currencyFormatter.format(amount), fontWeight = FontWeight.Bold, color = Color(0xFF1976D2))
                     }
                 }
             }
@@ -184,14 +184,14 @@ fun StaffDashboard(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(text = month, fontSize = 16.sp)
+                    Text(text = month, fontSize = 16.sp, color = Color.Black)
                     LinearProgressIndicator(
                         progress = { (amount / totalSpending.coerceAtLeast(1.0)).toFloat() },
                         modifier = Modifier.weight(1f).padding(horizontal = 16.dp).height(8.dp),
                         color = Color(0xFF1976D2),
-                        trackColor = Color.White.copy(alpha = 0.5f)
+                        trackColor = Color.Black.copy(alpha = 0.1f)
                     )
-                    Text(text = currencyFormatter.format(amount), fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text(text = currencyFormatter.format(amount), fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color.Black)
                 }
             }
             
@@ -200,13 +200,15 @@ fun StaffDashboard(
             // Educational Tip
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF9C4))
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF9C4)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Adviser Insight", fontWeight = FontWeight.Bold, color = Color(0xFFF57C00))
                     Text(
                         text = "Students are spending most on ${categoryDistribution.firstOrNull()?.first ?: "various categories"}. Consider organizing a workshop on managing these specific costs.",
-                        fontSize = 14.sp
+                        fontSize = 14.sp,
+                        color = Color.Black
                     )
                 }
             }

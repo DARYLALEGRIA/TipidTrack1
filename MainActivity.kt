@@ -153,8 +153,7 @@ class MainActivity : ComponentActivity() {
                     derivedStateOf {
                         filteredBudgets.value.map { budget ->
                             val spent = allExpenses
-                                .filter { expense -> selectedCycleRange?.let { CycleManager.isDateInCycle(expense.date ?: "", it) } ?: true }
-                                .filter { it.category.trim().equals(budget.category.trim(), ignoreCase = true) }
+                                .filter { it.category.trim().equals(budget.category?.trim() ?: "", ignoreCase = true) }
                                 .sumOf { parseAmount(it.amount) }
                             budget.copy(spent = "₱$spent")
                         }
@@ -285,7 +284,8 @@ class MainActivity : ComponentActivity() {
                                     budgets = budgetsWithSpent.value,
                                     hasExpenses = filteredExpenses.value.isNotEmpty(),
                                     onAddBudget = { budget -> 
-                                        allBudgets.add(budget)
+                                        val currentDate = SimpleDateFormat("MM/dd/yy", Locale.getDefault()).format(Date())
+                                        allBudgets.add(budget.copy(date = currentDate))
                                         saveData()
                                     },
                                     user = currentUser,

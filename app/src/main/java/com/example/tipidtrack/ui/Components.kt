@@ -79,6 +79,7 @@ data class User(
     val profileImageUri: String? = null,
     val cycleStartDate: String? = null,
     val role: UserRole = UserRole.STUDENT,
+    val totalAllowance: Double = 0.0,
     val id: String = UUID.randomUUID().toString() // Added at the end
 )
 

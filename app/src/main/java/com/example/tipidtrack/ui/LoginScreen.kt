@@ -75,9 +75,8 @@ fun LoginScreen(
         OutlinedTextField(
             value = email,
             onValueChange = { email = it },
-            label = { Text("Email Address", color = Color.White) },
+            label = { Text("Username", color = Color.White) },
             modifier = Modifier.fillMaxWidth(),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
             colors = registerTextFieldColors()
         )
 
@@ -126,15 +125,16 @@ fun LoginScreen(
 }
 
 enum class RegisterStep {
-    DETAILS, ROLE_SELECTION, MPIN_SETUP, TERMS
+    ROLE_SELECTION, DETAILS, MPIN_SETUP, TERMS
 }
 
 @Composable
 fun RegisterScreen(
+    existingUsers: List<User> = emptyList(),
     onRegisterComplete: (User) -> Unit,
     onBackToLogin: () -> Unit
 ) {
-    var currentStep by remember { mutableStateOf(RegisterStep.DETAILS) }
+    var currentStep by remember { mutableStateOf(RegisterStep.ROLE_SELECTION) }
     
     // User Data State
     var name by remember { mutableStateOf("") }
@@ -194,31 +194,36 @@ fun RegisterScreen(
 
         when (currentStep) {
             RegisterStep.DETAILS -> {
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text("Full Name", color = Color.White) },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = registerTextFieldColors()
-                )
-                Spacer(modifier = Modifier.height(16.dp))
+                if (selectedRole == UserRole.STUDENT) {
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = { name = it },
+                        label = { Text("Full Name", color = Color.White) },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = registerTextFieldColors()
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
+                
                 OutlinedTextField(
                     value = email,
                     onValueChange = { email = it },
-                    label = { Text("Email Address", color = Color.White) },
+                    label = { Text("Username", color = Color.White) },
                     modifier = Modifier.fillMaxWidth(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
                     colors = registerTextFieldColors()
                 )
-                Spacer(modifier = Modifier.height(16.dp))
-                OutlinedTextField(
-                    value = phone,
-                    onValueChange = { phone = it },
-                    label = { Text("Phone Number", color = Color.White) },
-                    modifier = Modifier.fillMaxWidth(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-                    colors = registerTextFieldColors()
-                )
+                
+                if (selectedRole == UserRole.STUDENT) {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    OutlinedTextField(
+                        value = phone,
+                        onValueChange = { phone = it },
+                        label = { Text("Phone Number", color = Color.White) },
+                        modifier = Modifier.fillMaxWidth(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                        colors = registerTextFieldColors()
+                    )
+                }
                 Spacer(modifier = Modifier.height(16.dp))
                 
                 // Password Field
@@ -289,8 +294,27 @@ fun RegisterScreen(
                             passwordError = error
                         } else if (password != confirmPassword) {
                             confirmPasswordError = true
-                        } else if (name.isNotEmpty() && email.isNotEmpty() && phone.isNotEmpty()) {
-                            currentStep = RegisterStep.ROLE_SELECTION
+                        } else {
+                            if (selectedRole == UserRole.STUDENT) {
+                                if (name.isNotEmpty() && email.isNotEmpty() && phone.isNotEmpty()) {
+                                    currentStep = RegisterStep.MPIN_SETUP
+                                }
+                            } else if (selectedRole == UserRole.STAFF) {
+                                if (email.isNotEmpty()) {
+                                    currentStep = RegisterStep.TERMS
+                                }
+                            } else { // ADMIN
+                                if (email.isNotEmpty()) {
+                                    onRegisterComplete(User(
+                                        name = name,
+                                        email = email,
+                                        phone = phone,
+                                        password = password,
+                                        mpin = mpin,
+                                        role = selectedRole
+                                    ))
+                                }
+                            }
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
@@ -299,8 +323,29 @@ fun RegisterScreen(
                 ) {
                     Text("Next", color = Color(0xFF2D4B8E), fontWeight = FontWeight.Bold)
                 }
+                Spacer(modifier = Modifier.height(8.dp))
+                TextButton(onClick = { currentStep = RegisterStep.ROLE_SELECTION }) {
+                    Text("Back", color = Color.White)
+                }
             }
             RegisterStep.ROLE_SELECTION -> {
+                val availableRoles = remember(existingUsers) {
+                    UserRole.values().filter { role ->
+                        when (role) {
+                            UserRole.ADMIN -> existingUsers.none { it.role == UserRole.ADMIN }
+                            UserRole.STAFF -> existingUsers.none { it.role == UserRole.STAFF }
+                            UserRole.STUDENT -> true
+                        }
+                    }
+                }
+
+                // If currently selected role is no longer available, default to STUDENT
+                LaunchedEffect(availableRoles) {
+                    if (selectedRole !in availableRoles) {
+                        selectedRole = UserRole.STUDENT
+                    }
+                }
+
                 Column(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalAlignment = Alignment.Start
@@ -308,7 +353,7 @@ fun RegisterScreen(
                     Text("Choose your role:", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(16.dp))
                     
-                    UserRole.values().forEach { role ->
+                    availableRoles.forEach { role ->
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
@@ -337,7 +382,7 @@ fun RegisterScreen(
                 
                 Spacer(modifier = Modifier.height(32.dp))
                 Button(
-                    onClick = { currentStep = RegisterStep.MPIN_SETUP },
+                    onClick = { currentStep = RegisterStep.DETAILS },
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(containerColor = Color.White),
                     shape = RoundedCornerShape(8.dp)
@@ -345,8 +390,8 @@ fun RegisterScreen(
                     Text("Next", color = Color(0xFF2D4B8E), fontWeight = FontWeight.Bold)
                 }
                 Spacer(modifier = Modifier.height(8.dp))
-                TextButton(onClick = { currentStep = RegisterStep.DETAILS }) {
-                    Text("Back", color = Color.White)
+                TextButton(onClick = { onBackToLogin() }) {
+                    Text("Back to Login", color = Color.White)
                 }
             }
             RegisterStep.MPIN_SETUP -> {
@@ -401,6 +446,29 @@ fun RegisterScreen(
                 }
             }
             RegisterStep.TERMS -> {
+                val termsText = when (selectedRole) {
+                    UserRole.STAFF -> {
+                        "Terms and Conditions for School Staff / Advisers\n\n" +
+                        "1. Introduction: Welcome to TipidTrack. As an Adviser, you agree to oversee student financial literacy.\n\n" +
+                        "2. Privacy: We value the privacy of your students. Student data is stored locally and used for school-related tracking only.\n\n" +
+                        "3. Security: You are responsible for maintaining the confidentiality of your account password.\n\n" +
+                        "4. Data Handling: You agree to handle all financial reports with professional confidentiality and integrity.\n\n" +
+                        "5. Professional Conduct: Use the platform to guide students towards better saving habits without infringing on personal choices.\n\n" +
+                        "6. Reporting: Ensure all staff-related reports are accurate and represent official school activities if applicable.\n\n" +
+                        "7. Accountability: You are responsible for the actions taken under your staff credentials."
+                    }
+                    else -> { // STUDENT
+                        "Terms and Conditions for Students\n\n" +
+                        "1. Introduction: Welcome to TipidTrack. By using our app, you agree to these terms to help you save.\n\n" +
+                        "2. Privacy: We value your privacy. Your personal budget and expense data is stored locally on your device.\n\n" +
+                        "3. Security: You are responsible for maintaining the confidentiality of your MPIN and account details.\n\n" +
+                        "4. Disclaimer: This app is for financial tracking and educational purposes. It is not a bank or financial institution.\n\n" +
+                        "5. Usage: You agree to use the app to track your own expenses and set savings goals responsibly.\n\n" +
+                        "6. Accuracy: While we provide the tools, the accuracy of your financial reports depends on your consistent input.\n\n" +
+                        "7. Updates: We may update the app to improve your experience; ensure you are using the latest version."
+                    }
+                }
+
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -409,12 +477,7 @@ fun RegisterScreen(
                 ) {
                     Column(modifier = Modifier.padding(16.dp).verticalScroll(rememberScrollState())) {
                         Text(
-                            text = "Terms and Conditions\n\n" +
-                                   "1. Introduction: Welcome to TipidTrack. By using our app, you agree to these terms.\n\n" +
-                                   "2. Privacy: We value your privacy. Your data is stored locally and used only for budget tracking.\n\n" +
-                                   "3. Security: You are responsible for maintaining the confidentiality of your MPIN.\n\n" +
-                                   "4. Disclaimer: This app is for financial tracking purposes and does not provide financial advice.\n\n" +
-                                   "5. Usage: You agree not to use the app for any illegal purposes.",
+                            text = termsText,
                             color = Color.White,
                             fontSize = 14.sp
                         )
@@ -454,7 +517,13 @@ fun RegisterScreen(
                     Text("Register", color = Color(0xFF2D4B8E), fontWeight = FontWeight.Bold)
                 }
                 Spacer(modifier = Modifier.height(8.dp))
-                TextButton(onClick = { currentStep = RegisterStep.MPIN_SETUP }) {
+                TextButton(onClick = { 
+                    if (selectedRole == UserRole.STUDENT) {
+                        currentStep = RegisterStep.MPIN_SETUP 
+                    } else {
+                        currentStep = RegisterStep.DETAILS
+                    }
+                }) {
                     Text("Back", color = Color.White)
                 }
             }

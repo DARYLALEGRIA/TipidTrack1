@@ -51,8 +51,8 @@ class MainActivity : ComponentActivity() {
                 val goals = remember { mutableStateListOf<Goal>() }
                 val notifications = remember { mutableStateListOf<NotificationItem>() }
                 
-                var totalAllowance by remember { 
-                    mutableDoubleStateOf(sharedPrefs.getFloat("total_allowance", 0f).toDouble()) 
+                var totalAllowance by remember(currentUser?.id) { 
+                    mutableDoubleStateOf(currentUser?.totalAllowance ?: 0.0) 
                 }
 
                 var selectedCycleRange by remember { mutableStateOf<CycleManager.CycleRange?>(null) }
@@ -136,43 +136,46 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                // Filter data based on current user (Privacy)
-                val filteredExpenses by remember(allExpenses, selectedCycleRange, currentUser) {
+                // Filtered Lists based on selected cycle
+                val filteredExpensesState = remember(allExpenses, selectedCycleRange, currentUser) {
                     derivedStateOf {
-                        val userOwned = allExpenses.filter { it.userId == currentUser?.id || it.userId == null }
+                        val userOwned = allExpenses.filter { it.userId == currentUser?.id }
                         selectedCycleRange?.let { range ->
                             userOwned.filter { CycleManager.isDateInCycle(it.date ?: "", range) }
                         } ?: userOwned.toList()
                     }
                 }
+                val filteredExpenses by filteredExpensesState
 
-                val filteredBudgets by remember(allBudgets, selectedCycleRange, currentUser) {
+                val filteredBudgetsState = remember(allBudgets, selectedCycleRange, currentUser) {
                     derivedStateOf {
-                        val userOwned = allBudgets.filter { it.userId == currentUser?.id || it.userId == null }
+                        val userOwned = allBudgets.filter { it.userId == currentUser?.id }
                         selectedCycleRange?.let { range ->
                             userOwned.filter { CycleManager.isDateInCycle(it.date ?: "", range) }
                         } ?: userOwned.toList()
                     }
                 }
+                val filteredBudgets by filteredBudgetsState
 
                 fun parseAmount(amountStr: String): Double {
                     return amountStr.replace("₱", "").replace(",", "").toDoubleOrNull() ?: 0.0
                 }
 
-                val totalBudgets by remember { derivedStateOf { filteredBudgets.sumOf { parseAmount(it.budget ?: "0") } } }
-                val totalExpenses by remember { derivedStateOf { filteredExpenses.sumOf { parseAmount(it.amount ?: "0") } } }
-                val balance by remember { derivedStateOf { totalAllowance - totalExpenses } }
+                val totalBudgets by remember(filteredBudgets) { derivedStateOf { filteredBudgets.sumOf { parseAmount(it.budget ?: "0") } } }
+                val totalExpenses by remember(filteredExpenses) { derivedStateOf { filteredExpenses.sumOf { parseAmount(it.amount ?: "0") } } }
+                val balance by remember(totalAllowance, totalExpenses) { derivedStateOf { totalAllowance - totalExpenses } }
 
-                val budgetsWithSpent by remember {
+                val budgetsWithSpentState = remember(filteredBudgets, filteredExpenses) {
                     derivedStateOf {
                         filteredBudgets.map { budget ->
                             val spent = filteredExpenses
-                                .filter { it.category?.equals(budget.category, ignoreCase = true) == true }
+                                .filter { it.category?.trim().equals(budget.category?.trim() ?: "", ignoreCase = true) == true }
                                 .sumOf { parseAmount(it.amount ?: "0") }
                             budget.copy(spent = "₱$spent")
                         }
                     }
                 }
+                val budgetsWithSpent by budgetsWithSpentState
 
                 fun playNotificationSound() {
                     try {
@@ -185,9 +188,9 @@ class MainActivity : ComponentActivity() {
                 }
 
                 fun checkBudgetsAndNotify(category: String) {
-                    val budgetItem = filteredBudgets.find { it.category?.equals(category, ignoreCase = true) == true } ?: return
+                    val budgetItem = allBudgets.filter { it.userId == currentUser?.id }.find { it.category?.equals(category, ignoreCase = true) == true } ?: return
                     val budgetLimit = parseAmount(budgetItem.budget ?: "0")
-                    val totalSpent = filteredExpenses
+                    val totalSpent = allExpenses.filter { it.userId == currentUser?.id }
                         .filter { it.category?.equals(category, ignoreCase = true) == true }
                         .sumOf { parseAmount(it.amount ?: "0") }
 
@@ -258,7 +261,16 @@ class MainActivity : ComponentActivity() {
                                     val user = allUsers.find { it.email == email && it.password == password }
                                     if (user != null) {
                                         currentUser = user
-                                        currentScreen = Screen.MPIN
+                                        if (user.role == UserRole.STUDENT) {
+                                            currentScreen = Screen.MPIN
+                                        } else {
+                                            Toast.makeText(context, "Login Successful!", Toast.LENGTH_SHORT).show()
+                                            currentScreen = when (user.role) {
+                                                UserRole.STAFF -> Screen.STAFF_DASHBOARD
+                                                UserRole.ADMIN -> Screen.ADMIN_DASHBOARD
+                                                else -> Screen.HOME
+                                            }
+                                        }
                                     } else {
                                         Toast.makeText(context, "Invalid credentials", Toast.LENGTH_SHORT).show()
                                     }
@@ -267,6 +279,7 @@ class MainActivity : ComponentActivity() {
                             )
 
                             Screen.REGISTER -> RegisterScreen(
+                                existingUsers = allUsers,
                                 onRegisterComplete = { newUser ->
                                     val startDateStr = SimpleDateFormat("MM/dd/yy", Locale.getDefault()).format(Date())
                                     val userWithCycle = newUser.copy(cycleStartDate = startDateStr)
@@ -303,7 +316,17 @@ class MainActivity : ComponentActivity() {
                                     user = currentUser,
                                     onUpdateBalance = { },
                                     onUpdateAllowance = { amount -> 
-                                        totalAllowance += amount
+                                        val newAllowance = totalAllowance + amount
+                                        totalAllowance = newAllowance
+                                        
+                                        // Update user object
+                                        val index = allUsers.indexOfFirst { it.id == currentUser?.id }
+                                        if (index != -1) {
+                                            val updated = allUsers[index].copy(totalAllowance = newAllowance)
+                                            allUsers[index] = updated
+                                            currentUser = updated
+                                        }
+
                                         checkGoalsAndNotify()
                                         saveData()
                                     },
@@ -445,7 +468,11 @@ class MainActivity : ComponentActivity() {
                                     budgets = budgetsWithSpent,
                                     hasExpenses = filteredExpenses.isNotEmpty(),
                                     onAddBudget = { budget -> 
-                                        allBudgets.add(budget.copy(userId = currentUser?.id))
+                                        val currentDate = SimpleDateFormat("MM/dd/yy", Locale.getDefault()).format(Date())
+                                        allBudgets.add(budget.copy(
+                                            date = currentDate,
+                                            userId = currentUser?.id
+                                        ))
                                         saveData()
                                     },
                                     user = currentUser,
