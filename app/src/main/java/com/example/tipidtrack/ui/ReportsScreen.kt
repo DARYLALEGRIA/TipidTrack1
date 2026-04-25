@@ -41,9 +41,12 @@ fun ReportsScreen(
     availableCycles: List<CycleManager.CycleRange> = emptyList(),
     onCycleSelected: (CycleManager.CycleRange) -> Unit = {},
     onNotificationClick: () -> Unit = {},
-    unreadNotificationsCount: Int = 0
+    unreadNotificationsCount: Int = 0,
+    onSaveReport: (String) -> Unit = {}
 ) {
     var showAccountDetailsDialog by remember { mutableStateOf(false) }
+    var showSaveDialog by remember { mutableStateOf(false) }
+    var reportNotes by remember { mutableStateOf("") }
 
     fun parseAmount(amountStr: String): Double {
         return amountStr.replace("₱", "").replace(",", "").toDoubleOrNull() ?: 0.0
@@ -184,6 +187,20 @@ fun ReportsScreen(
                 onCycleSelected = onCycleSelected
             )
 
+            // Save to Firebase Button
+            if (expenses.isNotEmpty()) {
+                Button(
+                    onClick = { showSaveDialog = true },
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3F51B5)),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Icon(Icons.Default.CloudUpload, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("SAVE REPORT TO CLOUD")
+                }
+            }
+
             if (expenses.isEmpty()) {
                 Text(
                     "No data available for reports.",
@@ -278,6 +295,39 @@ fun ReportsScreen(
             onDismiss = { showAccountDetailsDialog = false },
             onLogout = onLogout,
             onImageSelected = onUpdateProfileImage
+        )
+    }
+
+    if (showSaveDialog) {
+        AlertDialog(
+            onDismissRequest = { showSaveDialog = false },
+            title = { Text("Save Report") },
+            text = {
+                Column {
+                    Text("Add notes to this report (optional):")
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = reportNotes,
+                        onValueChange = { reportNotes = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = { Text("e.g. Monthly budget summary") }
+                    )
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    onSaveReport(reportNotes)
+                    showSaveDialog = false
+                    reportNotes = ""
+                }) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSaveDialog = false }) {
+                    Text("Cancel")
+                }
+            }
         )
     }
 

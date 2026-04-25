@@ -50,7 +50,8 @@ fun HomeScreen(
     availableCycles: List<CycleManager.CycleRange> = emptyList(),
     onCycleSelected: (CycleManager.CycleRange) -> Unit = {},
     onNotificationClick: () -> Unit = {},
-    unreadNotificationsCount: Int = 0
+    unreadNotificationsCount: Int = 0,
+    onAddGoal: (Goal) -> Unit = {}
 ) {
     var showAddExpenseDialog by remember { mutableStateOf(false) }
     var showAddAllowanceDialog by remember { mutableStateOf(false) }
@@ -257,7 +258,7 @@ fun HomeScreen(
             onAdd = { amountStr, date ->
                 val amount = amountStr.toDoubleOrNull() ?: 0.0
                 val subtitleText = if (date.isNotBlank()) "Targeted by $date" else "General Savings"
-                goals.add(
+                onAddGoal(
                     Goal(
                         title = "Savings Goal",
                         subtitle = subtitleText,
@@ -278,7 +279,7 @@ fun HomeScreen(
             onAdd = { item, amountStr, date ->
                 val amount = amountStr.toDoubleOrNull() ?: 0.0
                 val subtitleText = if (date.isNotBlank()) "$item (Targeted by $date)" else item
-                goals.add(
+                onAddGoal(
                     Goal(
                         title = "Item Goal",
                         subtitle = subtitleText,

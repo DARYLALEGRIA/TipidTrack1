@@ -51,7 +51,8 @@ data class Goal(
     val currentAmount: Double? = 0.0,
     val icon: String? = "🎯",
     val targetDate: String? = null,
-    val createdAt: String? = ""
+    val createdAt: String? = "",
+    val userId: String? = null
 )
 
 data class ExpenseItem(
@@ -80,7 +81,7 @@ data class User(
     val cycleStartDate: String? = null,
     val role: UserRole = UserRole.STUDENT,
     val totalAllowance: Double = 0.0,
-    val id: String = UUID.randomUUID().toString() // Added at the end
+    val id: String = "" // Default to empty, will be set to Firebase UID
 )
 
 enum class NotificationType {
@@ -94,7 +95,18 @@ data class NotificationItem(
     val category: String? = "General",
     val type: NotificationType? = NotificationType.GENERAL,
     val timestamp: Long? = System.currentTimeMillis(),
-    val isRead: Boolean? = false
+    val isRead: Boolean? = false,
+    val userId: String? = null
+)
+
+data class ReportItem(
+    val id: String = UUID.randomUUID().toString(),
+    val userId: String? = null,
+    val cycleRange: String? = "",
+    val totalSpent: Double = 0.0,
+    val categoryBreakdown: Map<String, Double> = emptyMap(),
+    val generatedAt: Long = System.currentTimeMillis(),
+    val notes: String? = ""
 )
 
 @Composable
