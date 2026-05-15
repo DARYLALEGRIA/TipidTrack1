@@ -19,6 +19,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.tipidtrack.model.*
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.*
@@ -28,33 +29,62 @@ fun StaffDashboard(
     user: User?,
     allExpenses: List<ExpenseItem>,
     allBudgets: List<BudgetItem>,
+    allUsers: List<User> = emptyList(),
     onLogout: () -> Unit,
     onUpdateProfileImage: (Uri) -> Unit
 ) {
     var showAccountDetailsDialog by remember { mutableStateOf(false) }
     val currencyFormatter = NumberFormat.getCurrencyInstance(Locale.forLanguageTag("en-PH"))
 
-    // Aggregated Data Calculations
-    val totalSpending = allExpenses.sumOf { it.amount?.replace("₱", "")?.replace(",", "")?.toDoubleOrNull() ?: 0.0 }
-    val uniqueUsersCount = allExpenses.map { it.userId }.distinct().count().coerceAtLeast(1)
-    val averageSpending = totalSpending / uniqueUsersCount
+    fun parseAmount(amountStr: String?): Double {
+        if (amountStr == null) return 0.0
+        return amountStr.replace("₱", "").replace(",", "").trim().toDoubleOrNull() ?: 0.0
+    }
 
-    val categoryDistribution = allExpenses.groupBy { it.category }
-        .mapValues { entry -> entry.value.sumOf { it.amount?.replace("₱", "")?.replace(",", "")?.toDoubleOrNull() ?: 0.0 } }
+    val students = allUsers.filter { it.role == UserRole.STUDENT }
+    val studentIds = students.map { it.id }.toSet()
+
+    val studentExpenses = if (studentIds.isNotEmpty()) {
+        allExpenses.filter { it.userId in studentIds }
+    } else {
+        allExpenses.filter { it.userId != user?.id }
+    }
+
+    val totalSpending = studentExpenses.sumOf { parseAmount(it.amount) }
+    val activeStudentIds = studentExpenses.mapNotNull { it.userId }.distinct()
+    val uniqueStudentsCount = if (students.isNotEmpty()) students.size else activeStudentIds.count().coerceAtLeast(1)
+    val averageSpending = if (uniqueStudentsCount > 0) totalSpending / uniqueStudentsCount else 0.0
+
+    val categoryDistribution = studentExpenses.groupBy { it.category?.trim() ?: "Other" }
+        .mapValues { entry -> entry.value.sumOf { parseAmount(it.amount) } }
         .toList()
         .sortedByDescending { it.second }
 
-    // Monthly Trends
-    val monthlyTrends = allExpenses.groupBy { 
+    val monthlyTrends = studentExpenses.groupBy { 
         try {
-            val date = SimpleDateFormat("MM/dd/yy", Locale.getDefault()).parse(it.date ?: "")
-            SimpleDateFormat("MMMM yyyy", Locale.getDefault()).format(date!!)
+            val dateStr = it.date ?: ""
+            if (dateStr.isEmpty()) "Unknown"
+            else {
+                val date = SimpleDateFormat("MM/dd/yy", Locale.getDefault()).parse(dateStr)
+                SimpleDateFormat("MMMM yyyy", Locale.getDefault()).format(date!!)
+            }
         } catch (e: Exception) {
             "Unknown"
         }
-    }.mapValues { entry -> entry.value.sumOf { it.amount?.replace("₱", "")?.replace(",", "")?.toDoubleOrNull() ?: 0.0 } }
+    }.mapValues { entry -> entry.value.sumOf { parseAmount(it.amount) } }
     .toList()
-    .sortedByDescending { it.first } // Simple sort by month name/year string (not perfect but works for now)
+    .sortedByDescending { it.first }
+
+    val anonymousBreakdown = if (students.isNotEmpty()) {
+        students.map { s ->
+            allExpenses.filter { it.userId == s.id }.sumOf { parseAmount(it.amount) }
+        }
+    } else {
+        activeStudentIds.map { id ->
+            allExpenses.filter { it.userId == id }.sumOf { parseAmount(it.amount) }
+        }
+    }.sortedByDescending { it }
+     .mapIndexed { index, spent -> "Student ${index + 1}" to spent }
 
     Column(
         modifier = Modifier
@@ -65,7 +95,6 @@ fun StaffDashboard(
                 )
             )
     ) {
-        // Top Bar
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -113,17 +142,16 @@ fun StaffDashboard(
             )
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Summary Card
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(containerColor = Color.White)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text(text = "Aggregated Overview", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Color(0xFF1976D2))
+                    Text(text = "Aggregated Student Overview", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Color(0xFF1976D2))
                     Spacer(modifier = Modifier.height(12.dp))
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Total System Spending:", color = Color.Black)
+                        Text("Total Student Spending:", color = Color.Black)
                         Text(currencyFormatter.format(totalSpending), fontWeight = FontWeight.Bold, color = Color.Black)
                     }
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -131,8 +159,41 @@ fun StaffDashboard(
                         Text(currencyFormatter.format(averageSpending), fontWeight = FontWeight.Bold, color = Color.Black)
                     }
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Active Tracked Students:", color = Color.Black)
-                        Text("$uniqueUsersCount", fontWeight = FontWeight.Bold, color = Color.Black)
+                        Text("Tracked Individuals:", color = Color.Black)
+                        Text("${if (students.isNotEmpty()) students.size else activeStudentIds.size}", fontWeight = FontWeight.Bold, color = Color.Black)
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Text(
+                text = "Anonymous Spending Habits",
+                color = Color.Black,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.align(Alignment.Start)
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            
+            if (anonymousBreakdown.isEmpty()) {
+                Text("No spending data recorded yet.", color = Color.DarkGray, fontSize = 14.sp)
+            } else {
+                anonymousBreakdown.forEach { (label, amount) ->
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.8f))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(text = label, fontWeight = FontWeight.Medium, color = Color.Black)
+                            Text(text = currencyFormatter.format(amount), fontWeight = FontWeight.Bold, color = Color(0xFF1976D2))
+                        }
                     }
                 }
             }
@@ -159,7 +220,7 @@ fun StaffDashboard(
                         modifier = Modifier.padding(16.dp).fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text(text = category ?: "Unknown", fontWeight = FontWeight.Medium, color = Color.Black)
+                        Text(text = category, fontWeight = FontWeight.Medium, color = Color.Black)
                         Text(text = currencyFormatter.format(amount), fontWeight = FontWeight.Bold, color = Color(0xFF1976D2))
                     }
                 }
@@ -186,7 +247,7 @@ fun StaffDashboard(
                 ) {
                     Text(text = month, fontSize = 16.sp, color = Color.Black)
                     LinearProgressIndicator(
-                        progress = { (amount / totalSpending.coerceAtLeast(1.0)).toFloat() },
+                        progress = { if (totalSpending > 0) (amount / totalSpending).toFloat() else 0f },
                         modifier = Modifier.weight(1f).padding(horizontal = 16.dp).height(8.dp),
                         color = Color(0xFF1976D2),
                         trackColor = Color.Black.copy(alpha = 0.1f)
@@ -197,7 +258,6 @@ fun StaffDashboard(
             
             Spacer(modifier = Modifier.height(24.dp))
             
-            // Educational Tip
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF9C4)),
@@ -206,7 +266,11 @@ fun StaffDashboard(
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Adviser Insight", fontWeight = FontWeight.Bold, color = Color(0xFFF57C00))
                     Text(
-                        text = "Students are spending most on ${categoryDistribution.firstOrNull()?.first ?: "various categories"}. Consider organizing a workshop on managing these specific costs.",
+                        text = if (categoryDistribution.isNotEmpty()) {
+                            "Students are spending most on ${categoryDistribution.first().first}. Consider organizing a workshop on managing these specific costs."
+                        } else {
+                            "Track student expenses to see insights here."
+                        },
                         fontSize = 14.sp,
                         color = Color.Black
                     )

@@ -5,9 +5,12 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -16,10 +19,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.tipidtrack.model.*
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -34,6 +39,7 @@ fun ExpensesScreen(
     onUpdateProfileImage: (Uri) -> Unit = {},
     onLogout: () -> Unit = {},
     onAddExpense: (String, String, String) -> Unit = { _, _, _ -> },
+    onDeleteExpense: (String) -> Unit = {},
     selectedCycle: CycleManager.CycleRange? = null,
     availableCycles: List<CycleManager.CycleRange> = emptyList(),
     onCycleSelected: (CycleManager.CycleRange) -> Unit = {},
@@ -47,8 +53,9 @@ fun ExpensesScreen(
     
     var selectedCategory by remember { mutableStateOf("All") }
     var selectedDate by remember { mutableStateOf("All") }
-    
     var categoryExpanded by remember { mutableStateOf(false) }
+    
+    var expenseToDelete by remember { mutableStateOf<ExpenseItem?>(null) }
 
     fun parseAmount(amountStr: String): Double {
         return amountStr.replace("₱", "").replace(",", "").toDoubleOrNull() ?: 0.0
@@ -56,29 +63,25 @@ fun ExpensesScreen(
 
     fun String.capitalize() = this.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }
 
-    // Dynamically derive categories from user-defined input in expenses
     val categories = remember(expenses) {
         val userCats = expenses.map { (it.category ?: "").trim().capitalize() }.distinct().sorted()
         listOf("All") + userCats
     }
 
-    // Aggregation Logic: Group expenses by category and sum amounts
-    val aggregatedExpenses by remember(expenses, selectedCategory, selectedDate) {
-        derivedStateOf {
-            expenses
-                .filter { expense ->
-                    selectedDate == "All" || expense.date == selectedDate
-                }
-                .groupBy { (it.category ?: "").trim().capitalize() }
-                .mapValues { entry ->
-                    entry.value.sumOf { parseAmount(it.amount ?: "") }
-                }
-                .filter { (category, _) ->
-                    selectedCategory == "All" || category.equals(selectedCategory, ignoreCase = true)
-                }
-                .toList()
-                .sortedByDescending { it.second }
-        }
+    val filteredExpenses = remember(expenses, selectedCategory, selectedDate) {
+        expenses.filter { expense ->
+            val matchesCategory = selectedCategory == "All" || (expense.category ?: "").trim().equals(selectedCategory, ignoreCase = true)
+            val matchesDate = selectedDate == "All" || expense.date == selectedDate
+            matchesCategory && matchesDate
+        }.sortedByDescending { it.date }
+    }
+
+    val aggregatedData = remember(filteredExpenses) {
+        filteredExpenses
+            .groupBy { (it.category ?: "").trim().capitalize() }
+            .mapValues { entry -> entry.value.sumOf { parseAmount(it.amount ?: "") } }
+            .toList()
+            .sortedByDescending { it.second }
     }
 
     if (showDatePicker) {
@@ -185,6 +188,7 @@ fun ExpensesScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(horizontal = 16.dp)
+                .verticalScroll(rememberScrollState())
         ) {
             Text(
                 text = "EXPENSES",
@@ -194,7 +198,6 @@ fun ExpensesScreen(
                 modifier = Modifier.padding(vertical = 16.dp)
             )
 
-            // Cycle Selector
             CycleSelector(
                 selectedCycle = selectedCycle,
                 availableCycles = availableCycles,
@@ -242,43 +245,61 @@ fun ExpensesScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Expenses Table (Aggregated by Category)
-            if (aggregatedExpenses.isNotEmpty()) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .border(1.dp, Color.Black)
-                ) {
-                    // Table Header
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(Color(0xFFBBDEFB).copy(alpha = 0.5f))
-                    ) {
+            // Summary Table
+            if (aggregatedData.isNotEmpty()) {
+                Text("SUMMARY BY CATEGORY", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color.DarkGray)
+                Spacer(modifier = Modifier.height(8.dp))
+                Column(modifier = Modifier.fillMaxWidth().border(1.dp, Color.Black)) {
+                    Row(modifier = Modifier.fillMaxWidth().background(Color(0xFFBBDEFB).copy(alpha = 0.5f))) {
                         ExpenseHeaderCell("CATEGORY", Modifier.weight(1f))
-                        ExpenseHeaderCell("TOTAL AMOUNT", Modifier.weight(1f))
+                        ExpenseHeaderCell("TOTAL", Modifier.weight(1f))
                     }
-                    
-                    // Table Rows
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        aggregatedExpenses.forEach { (category, total) ->
-                            Row(modifier = Modifier.fillMaxWidth()) {
-                                ExpenseTableCell(category, Modifier.weight(1f))
-                                ExpenseTableCell("₱${String.format(Locale.US, "%,.2f", total)}", Modifier.weight(1f))
-                            }
+                    aggregatedData.forEach { (category, total) ->
+                        Row(modifier = Modifier.fillMaxWidth()) {
+                            ExpenseTableCell(category, Modifier.weight(1f))
+                            ExpenseTableCell("₱${String.format(Locale.US, "%,.2f", total)}", Modifier.weight(1f))
                         }
                     }
                 }
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(24.dp))
+            }
+
+            // Individual Transactions
+            Text("TRANSACTION HISTORY", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color.DarkGray)
+            Text("(Long press to delete)", fontSize = 10.sp, color = Color.Gray)
+            Spacer(modifier = Modifier.height(8.dp))
+
+            if (filteredExpenses.isNotEmpty()) {
+                Column(modifier = Modifier.fillMaxWidth().border(1.dp, Color.Black)) {
+                    Row(modifier = Modifier.fillMaxWidth().background(Color(0xFFBBDEFB).copy(alpha = 0.5f))) {
+                        ExpenseHeaderCell("DATE", Modifier.weight(0.8f))
+                        ExpenseHeaderCell("CAT", Modifier.weight(0.7f))
+                        ExpenseHeaderCell("AMOUNT", Modifier.weight(1f))
+                    }
+                    filteredExpenses.forEach { expense ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .pointerInput(Unit) {
+                                    detectTapGestures(onLongPress = { expenseToDelete = expense })
+                                }
+                        ) {
+                            ExpenseTableCell(expense.date ?: "", Modifier.weight(0.8f))
+                            ExpenseTableCell(expense.category ?: "", Modifier.weight(0.7f))
+                            ExpenseTableCell(expense.amount ?: "", Modifier.weight(1f))
+                        }
+                    }
+                }
             } else {
                 Text(
-                    text = "No expenses recorded yet.",
+                    text = "No expenses found for this selection.",
                     color = Color.DarkGray,
-                    fontSize = 16.sp,
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp),
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
                     textAlign = TextAlign.Center
                 )
             }
+
+            Spacer(modifier = Modifier.height(24.dp))
 
             Button(
                 onClick = { showAddExpenseDialog = true },
@@ -288,6 +309,8 @@ fun ExpensesScreen(
             ) {
                 Text("Add Expense", color = Color.Black, fontWeight = FontWeight.Bold)
             }
+            
+            Spacer(modifier = Modifier.height(100.dp))
         }
     }
 
@@ -297,6 +320,30 @@ fun ExpensesScreen(
             onAdd = { amount, category, notes ->
                 onAddExpense(amount, category, notes)
                 showAddExpenseDialog = false
+            }
+        )
+    }
+
+    if (expenseToDelete != null) {
+        AlertDialog(
+            onDismissRequest = { expenseToDelete = null },
+            title = { Text("Delete Expense") },
+            text = { Text("Are you sure you want to delete this expense record?") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onDeleteExpense(expenseToDelete!!.id)
+                        expenseToDelete = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { expenseToDelete = null }) {
+                    Text("Cancel")
+                }
             }
         )
     }
@@ -338,7 +385,7 @@ fun ExpenseHeaderCell(text: String, modifier: Modifier) {
             .padding(4.dp),
         contentAlignment = Alignment.Center
     ) {
-        Text(text = text, color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+        Text(text = text, color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 11.sp, textAlign = TextAlign.Center)
     }
 }
 
@@ -350,6 +397,6 @@ fun ExpenseTableCell(text: String, modifier: Modifier) {
             .padding(4.dp),
         contentAlignment = Alignment.Center
     ) {
-        Text(text = text, color = Color.Black, fontSize = 12.sp)
+        Text(text = text, color = Color.Black, fontSize = 11.sp, textAlign = TextAlign.Center)
     }
 }

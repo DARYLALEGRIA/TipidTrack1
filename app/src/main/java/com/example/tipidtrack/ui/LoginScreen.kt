@@ -1,7 +1,6 @@
 package com.example.tipidtrack.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -11,7 +10,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Backspace
-import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
@@ -24,14 +22,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.tipidtrack.ui.theme.*
+import com.example.tipidtrack.model.User
+import com.example.tipidtrack.model.UserRole
 
 @Composable
 fun LoginScreen(
-    onLoginClick: (String, String) -> Unit, // email, password
+    onLoginClick: (String, String) -> Unit,
     onRegisterClick: () -> Unit
 ) {
     var email by remember { mutableStateOf("") }
@@ -51,7 +49,6 @@ fun LoginScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        // Logo
         Box(
             modifier = Modifier
                 .size(100.dp)
@@ -90,14 +87,9 @@ fun LoginScreen(
             visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
             trailingIcon = {
-                val image = if (passwordVisible)
-                    Icons.Filled.Visibility
-                else Icons.Filled.VisibilityOff
-
-                val description = if (passwordVisible) "Hide password" else "Show password"
-
+                val image = if (passwordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff
                 IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                    Icon(imageVector = image, contentDescription = description, tint = Color.White)
+                    Icon(imageVector = image, contentDescription = null, tint = Color.White)
                 }
             },
             colors = registerTextFieldColors()
@@ -136,7 +128,6 @@ fun RegisterScreen(
 ) {
     var currentStep by remember { mutableStateOf(RegisterStep.ROLE_SELECTION) }
     
-    // User Data State
     var name by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
@@ -147,11 +138,9 @@ fun RegisterScreen(
     var confirmMpin by remember { mutableStateOf("") }
     var agreedToTerms by remember { mutableStateOf(false) }
 
-    // Visibility States
     var passwordVisible by remember { mutableStateOf(false) }
     var confirmPasswordVisible by remember { mutableStateOf(false) }
 
-    // Validation State
     var passwordError by remember { mutableStateOf<String?>(null) }
     var confirmPasswordError by remember { mutableStateOf(false) }
     var mpinConfirmError by remember { mutableStateOf(false) }
@@ -226,7 +215,6 @@ fun RegisterScreen(
                 }
                 Spacer(modifier = Modifier.height(16.dp))
                 
-                // Password Field
                 Column {
                     OutlinedTextField(
                         value = password,
@@ -240,10 +228,7 @@ fun RegisterScreen(
                         visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                         trailingIcon = {
-                            val image = if (passwordVisible)
-                                Icons.Filled.Visibility
-                            else Icons.Filled.VisibilityOff
-
+                            val image = if (passwordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff
                             IconButton(onClick = { passwordVisible = !passwordVisible }) {
                                 Icon(imageVector = image, contentDescription = null, tint = Color.White)
                             }
@@ -257,7 +242,6 @@ fun RegisterScreen(
                 
                 Spacer(modifier = Modifier.height(16.dp))
                 
-                // Confirm Password Field
                 OutlinedTextField(
                     value = confirmPassword,
                     onValueChange = { 
@@ -270,10 +254,7 @@ fun RegisterScreen(
                     visualTransformation = if (confirmPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                     trailingIcon = {
-                        val image = if (confirmPasswordVisible)
-                            Icons.Filled.Visibility
-                        else Icons.Filled.VisibilityOff
-
+                        val image = if (confirmPasswordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff
                         IconButton(onClick = { confirmPasswordVisible = !confirmPasswordVisible }) {
                             Icon(imageVector = image, contentDescription = null, tint = Color.White)
                         }
@@ -303,7 +284,7 @@ fun RegisterScreen(
                                 if (email.isNotEmpty()) {
                                     currentStep = RegisterStep.TERMS
                                 }
-                            } else { // ADMIN
+                            } else {
                                 if (email.isNotEmpty()) {
                                     onRegisterComplete(User(
                                         name = name,
@@ -339,7 +320,6 @@ fun RegisterScreen(
                     }
                 }
 
-                // If currently selected role is no longer available, default to STUDENT
                 LaunchedEffect(availableRoles) {
                     if (selectedRole !in availableRoles) {
                         selectedRole = UserRole.STUDENT
@@ -448,24 +428,10 @@ fun RegisterScreen(
             RegisterStep.TERMS -> {
                 val termsText = when (selectedRole) {
                     UserRole.STAFF -> {
-                        "Terms and Conditions for School Staff / Advisers\n\n" +
-                        "1. Introduction: Welcome to TipidTrack. As an Adviser, you agree to oversee student financial literacy.\n\n" +
-                        "2. Privacy: We value the privacy of your students. Student data is stored locally and used for school-related tracking only.\n\n" +
-                        "3. Security: You are responsible for maintaining the confidentiality of your account password.\n\n" +
-                        "4. Data Handling: You agree to handle all financial reports with professional confidentiality and integrity.\n\n" +
-                        "5. Professional Conduct: Use the platform to guide students towards better saving habits without infringing on personal choices.\n\n" +
-                        "6. Reporting: Ensure all staff-related reports are accurate and represent official school activities if applicable.\n\n" +
-                        "7. Accountability: You are responsible for the actions taken under your staff credentials."
+                        "Terms and Conditions for School Staff / Advisers\n\n1. Introduction: Welcome to TipidTrack. As an Adviser, you agree to oversee student financial literacy.\n\n2. Privacy: We value the privacy of your students. Student data is stored securely.\n\n3. Security: You are responsible for maintaining the confidentiality of your account password."
                     }
-                    else -> { // STUDENT
-                        "Terms and Conditions for Students\n\n" +
-                        "1. Introduction: Welcome to TipidTrack. By using our app, you agree to these terms to help you save.\n\n" +
-                        "2. Privacy: We value your privacy. Your personal budget and expense data is stored locally on your device.\n\n" +
-                        "3. Security: You are responsible for maintaining the confidentiality of your MPIN and account details.\n\n" +
-                        "4. Disclaimer: This app is for financial tracking and educational purposes. It is not a bank or financial institution.\n\n" +
-                        "5. Usage: You agree to use the app to track your own expenses and set savings goals responsibly.\n\n" +
-                        "6. Accuracy: While we provide the tools, the accuracy of your financial reports depends on your consistent input.\n\n" +
-                        "7. Updates: We may update the app to improve your experience; ensure you are using the latest version."
+                    else -> {
+                        "Terms and Conditions for Students\n\n1. Introduction: Welcome to TipidTrack. By using our app, you agree to these terms to help you save.\n\n2. Privacy: We value your privacy. Your data is stored securely."
                     }
                 }
 
@@ -565,29 +531,21 @@ fun MPINScreen(
             .fillMaxSize()
             .background(
                 brush = Brush.verticalGradient(
-                    colors = listOf(
-                        Color(0xFF4facfe),
-                        Color(0xFF00f2fe)
-                    )
+                    colors = listOf(Color(0xFF4facfe), Color(0xFF00f2fe))
                 )
             )
     ) {
-        // Top Section (Blue Area)
         Box(
             modifier = Modifier
                 .weight(1.3f)
                 .fillMaxWidth()
         ) {
-            // Main Centered Content
             Column(
                 modifier = Modifier.fillMaxSize(),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
-                // TipidTrack Logo Row
-                Row(
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         modifier = Modifier
                             .size(56.dp)
@@ -640,25 +598,19 @@ fun MPINScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     repeat(4) { index ->
                         val isFilled = index < mpin.length
                         Box(
                             modifier = Modifier
                                 .size(16.dp)
                                 .border(2.dp, Color.White, CircleShape)
-                                .background(
-                                    if (isFilled) Color.White else Color.Transparent,
-                                    CircleShape
-                                )
+                                .background(if (isFilled) Color.White else Color.Transparent, CircleShape)
                         )
                     }
                 }
             }
             
-            // Footer text pinned to bottom of blue area
             Text(
                 text = "Never share your MPIN or OTP with anyone",
                 color = Color.White,
@@ -669,7 +621,6 @@ fun MPINScreen(
             )
         }
 
-        // Bottom Section (Keypad Area)
         Box(
             modifier = Modifier
                 .weight(1f)

@@ -3,6 +3,7 @@ package com.example.tipidtrack.ui
 import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -16,17 +17,17 @@ import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
+import com.example.tipidtrack.model.*
 import java.text.NumberFormat
 import java.util.*
 
@@ -35,11 +36,9 @@ fun HomeScreen(
     balance: Double,
     allowance: Double,
     expensesAmount: Double,
-    goals: SnapshotStateList<Goal>,
+    goals: List<Goal>,
     user: User? = null,
-    onUpdateBalance: (Double) -> Unit,
     onUpdateAllowance: (Double) -> Unit,
-    onUpdateExpensesAmount: (Double) -> Unit,
     onUpdateProfileImage: (Uri) -> Unit = {},
     onLogout: () -> Unit = {},
     onAddExpenseItem: (String, String, String) -> Unit,
@@ -51,7 +50,8 @@ fun HomeScreen(
     onCycleSelected: (CycleManager.CycleRange) -> Unit = {},
     onNotificationClick: () -> Unit = {},
     unreadNotificationsCount: Int = 0,
-    onAddGoal: (Goal) -> Unit = {}
+    onAddGoal: (Goal) -> Unit = {},
+    onDeleteGoal: (String) -> Unit = {}
 ) {
     var showAddExpenseDialog by remember { mutableStateOf(false) }
     var showAddAllowanceDialog by remember { mutableStateOf(false) }
@@ -59,6 +59,7 @@ fun HomeScreen(
     var showAddSavingsGoalDialog by remember { mutableStateOf(false) }
     var showAddItemGoalDialog by remember { mutableStateOf(false) }
     var showAccountDetailsDialog by remember { mutableStateOf(false) }
+    var goalToDelete by remember { mutableStateOf<Goal?>(null) }
 
     val currencyFormatter = NumberFormat.getCurrencyInstance(Locale.forLanguageTag("en-PH"))
 
@@ -188,7 +189,8 @@ fun HomeScreen(
                             "Goal Reached! 🎉"
                         }
                     } else null,
-                    icon = goal.icon ?: "🎯"
+                    icon = goal.icon ?: "🎯",
+                    onLongClick = { goalToDelete = goal }
                 )
                 Spacer(modifier = Modifier.height(16.dp))
             }
@@ -303,6 +305,30 @@ fun HomeScreen(
         )
     }
 
+    if (goalToDelete != null) {
+        AlertDialog(
+            onDismissRequest = { goalToDelete = null },
+            title = { Text("Delete Goal") },
+            text = { Text("Are you sure you want to delete this goal?") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onDeleteGoal(goalToDelete!!.id)
+                        goalToDelete = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { goalToDelete = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
     // Fixed Bottom Navigation Bar
     TipidTrackBottomNavigation(
         currentScreen = "HOME",
@@ -378,10 +404,15 @@ fun GoalCard(
     currentAmount: String,
     targetAmount: String,
     footerText: String? = null,
-    icon: String
+    icon: String,
+    onLongClick: () -> Unit = {}
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .pointerInput(onLongClick) {
+                detectTapGestures(onLongPress = { onLongClick() })
+            },
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0xFFBBDEFB).copy(alpha = 0.8f))
     ) {

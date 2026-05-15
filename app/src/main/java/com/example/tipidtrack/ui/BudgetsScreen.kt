@@ -4,33 +4,35 @@ import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.example.tipidtrack.model.*
 
 @Composable
 fun BudgetsScreen(
     budgets: List<BudgetItem>,
     hasExpenses: Boolean = false,
     onAddBudget: (BudgetItem) -> Unit = {},
+    onDeleteBudget: (String) -> Unit = {},
     user: User? = null,
     onHomeClick: () -> Unit = {},
     onExpensesClick: () -> Unit = {},
@@ -45,6 +47,7 @@ fun BudgetsScreen(
 ) {
     var showAddBudgetDialog by remember { mutableStateOf(false) }
     var showAccountDetailsDialog by remember { mutableStateOf(false) }
+    var budgetToDelete by remember { mutableStateOf<BudgetItem?>(null) }
 
     Column(
         modifier = Modifier
@@ -132,6 +135,8 @@ fun BudgetsScreen(
                 onCycleSelected = onCycleSelected
             )
 
+            Text("(Long press to delete)", fontSize = 10.sp, color = Color.Gray, modifier = Modifier.padding(bottom = 8.dp))
+
             // Budget Table
             if (budgets.isNotEmpty()) {
                 Column(
@@ -150,7 +155,13 @@ fun BudgetsScreen(
                     }
                     // Data Rows
                     budgets.forEach { item ->
-                        Row(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .pointerInput(Unit) {
+                                    detectTapGestures(onLongPress = { budgetToDelete = item })
+                                }
+                        ) {
                             BudgetTableCell(item.category ?: "", Modifier.weight(1f))
                             BudgetTableCell(item.budget ?: "₱0.0", Modifier.weight(1f))
                             if (hasExpenses) {
@@ -189,9 +200,33 @@ fun BudgetsScreen(
             onDismiss = { showAddBudgetDialog = false },
             onAdd = { amount, categoryName ->
                 if (amount.isNotEmpty() && categoryName.isNotEmpty()) {
-                    onAddBudget(BudgetItem(categoryName, "₱$amount"))
+                    onAddBudget(BudgetItem(category = categoryName, budget = "₱$amount"))
                 }
                 showAddBudgetDialog = false
+            }
+        )
+    }
+
+    if (budgetToDelete != null) {
+        AlertDialog(
+            onDismissRequest = { budgetToDelete = null },
+            title = { Text("Delete Budget") },
+            text = { Text("Are you sure you want to delete this budget record?") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onDeleteBudget(budgetToDelete!!.id)
+                        budgetToDelete = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { budgetToDelete = null }) {
+                    Text("Cancel")
+                }
             }
         )
     }

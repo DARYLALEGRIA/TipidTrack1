@@ -18,7 +18,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
-import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -37,77 +36,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import coil.compose.rememberAsyncImagePainter
+import com.example.tipidtrack.model.*
 import java.text.SimpleDateFormat
 import java.util.*
-
-enum class UserRole {
-    STUDENT, STAFF, ADMIN
-}
-
-data class Goal(
-    val title: String? = "",
-    val subtitle: String? = "",
-    val targetAmount: Double? = 0.0,
-    val currentAmount: Double? = 0.0,
-    val icon: String? = "🎯",
-    val targetDate: String? = null,
-    val createdAt: String? = "",
-    val userId: String? = null
-)
-
-data class ExpenseItem(
-    val date: String? = null,
-    val category: String? = "",
-    val amount: String? = "₱0.0",
-    val notes: String? = "",
-    val userId: String? = null // Added at the end
-)
-
-data class BudgetItem(
-    val category: String? = "",
-    val budget: String? = "₱0.0",
-    val spent: String? = "₱0.0",
-    val date: String? = "",
-    val userId: String? = null // Added at the end
-)
-
-data class User(
-    val name: String? = "",
-    val email: String? = "",
-    val phone: String? = "",
-    val password: String? = "",
-    val mpin: String? = "",
-    val profileImageUri: String? = null,
-    val cycleStartDate: String? = null,
-    val role: UserRole = UserRole.STUDENT,
-    val totalAllowance: Double = 0.0,
-    val id: String = "" // Default to empty, will be set to Firebase UID
-)
-
-enum class NotificationType {
-    OVERSPENDING, WARNING, BUDGET_REACHED, SAVINGS, GENERAL
-}
-
-data class NotificationItem(
-    val id: String? = UUID.randomUUID().toString(),
-    val title: String? = "Notification",
-    val message: String? = "",
-    val category: String? = "General",
-    val type: NotificationType? = NotificationType.GENERAL,
-    val timestamp: Long? = System.currentTimeMillis(),
-    val isRead: Boolean? = false,
-    val userId: String? = null
-)
-
-data class ReportItem(
-    val id: String = UUID.randomUUID().toString(),
-    val userId: String? = null,
-    val cycleRange: String? = "",
-    val totalSpent: Double = 0.0,
-    val categoryBreakdown: Map<String, Double> = emptyMap(),
-    val generatedAt: Long = System.currentTimeMillis(),
-    val notes: String? = ""
-)
 
 @Composable
 fun BottomNavItem(label: String, icon: ImageVector, isSelected: Boolean, onClick: () -> Unit) {
@@ -252,7 +183,6 @@ fun DatePickerField(
 ) {
     var showDatePicker by remember { mutableStateOf(false) }
     
-    // Initialize with today's date if selectedDate is empty
     val initialMillis = if (selectedDate.isNotEmpty()) {
         try {
             val formatter = SimpleDateFormat("MM/dd/yy", Locale.getDefault())
@@ -292,7 +222,7 @@ fun DatePickerField(
             confirmButton = {
                 TextButton(onClick = {
                     val millis = datePickerState.selectedDateMillis ?: initialMillis
-                    val date = Date(millis ?: System.currentTimeMillis())
+                    val date = Date(millis)
                     val formatter = SimpleDateFormat("MM/dd/yy", Locale.getDefault())
                     formatter.timeZone = TimeZone.getTimeZone("UTC")
                     onDateSelected(formatter.format(date))
@@ -680,7 +610,6 @@ fun NotificationScreen(
                 )
             )
     ) {
-        // Top Bar
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -712,12 +641,7 @@ fun NotificationScreen(
                     .fillMaxSize()
                     .padding(horizontal = 16.dp)
             ) {
-                // Defensive filtering and sorting. Removed key for stability.
-                val sortedNotifications = notifications
-                    .filterNotNull()
-                    .sortedByDescending { it.timestamp ?: 0L }
-                
-                items(sortedNotifications) { notification ->
+                items(notifications) { notification ->
                     AnimatedVisibility(
                         visible = true,
                         enter = fadeIn() + slideInVertically()
@@ -735,7 +659,6 @@ fun NotificationScreen(
 fun NotificationCard(notification: NotificationItem, onClick: () -> Unit) {
     val sdf = SimpleDateFormat("MM/dd/yy HH:mm", Locale.getDefault())
     
-    // Triple-safe access for runtime nulls from Gson
     val nType = notification.type ?: NotificationType.GENERAL
     val nTitle = notification.title ?: "Notice"
     val nMessage = notification.message ?: ""
