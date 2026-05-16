@@ -12,7 +12,7 @@ object CycleManager {
         val calendar = Calendar.getInstance()
         val now = calendar.time
 
-        if (startDateStr == null) {
+        if (startDateStr.isNullOrEmpty()) {
             val start = calendar.time
             calendar.add(Calendar.MONTH, 1)
             calendar.add(Calendar.DAY_OF_MONTH, -1)
@@ -20,10 +20,18 @@ object CycleManager {
             return CycleRange(start, end)
         }
 
-        val firstDate = sdf.parse(startDateStr) ?: Date()
+        val firstDate = try {
+            sdf.parse(startDateStr) ?: Date()
+        } catch (e: Exception) {
+            Date()
+        }
+        
         calendar.time = firstDate
 
-        while (true) {
+        // Prevent infinite loop if something goes wrong with dates
+        var iterations = 0
+        while (iterations < 100) {
+            iterations++
             val cycleStart = calendar.time
             val nextMonth = calendar.clone() as Calendar
             nextMonth.add(Calendar.MONTH, 1)
@@ -40,18 +48,26 @@ object CycleManager {
 
             calendar.add(Calendar.MONTH, 1)
         }
+        return CycleRange(firstDate, now)
     }
 
     fun getAllCycles(startDateStr: String?): List<CycleRange> {
-        if (startDateStr == null) return emptyList()
+        if (startDateStr.isNullOrEmpty()) return emptyList()
         val calendar = Calendar.getInstance()
         val now = calendar.time
-        val firstDate = sdf.parse(startDateStr) ?: return emptyList()
+        
+        val firstDate = try {
+            sdf.parse(startDateStr) ?: return emptyList()
+        } catch (e: Exception) {
+            return emptyList()
+        }
         
         val cycles = mutableListOf<CycleRange>()
         calendar.time = firstDate
 
-        while (true) {
+        var iterations = 0
+        while (iterations < 100) {
+            iterations++
             val cycleStart = calendar.time
             val nextMonth = calendar.clone() as Calendar
             nextMonth.add(Calendar.MONTH, 1)

@@ -1,12 +1,10 @@
 package com.example.tipidtrack.ui
 
+import com.example.tipidtrack.model.*
 import java.text.SimpleDateFormat
 import java.util.*
 
-/**
- * Interface representing the contract for student tracking analytics.
- * Follows Interface Segregation Principle (ISP).
- */
+
 interface IStudentTracker {
     fun getStudentExpenses(expenses: List<ExpenseItem>, users: List<User>): List<ExpenseItem>
     fun calculateTotalSpending(expenses: List<ExpenseItem>): Double
@@ -16,10 +14,7 @@ interface IStudentTracker {
     fun getAnonymousSpendingHabits(expenses: List<ExpenseItem>, users: List<User>): List<Pair<String, Double>>
 }
 
-/**
- * Implementation of student analytics logic.
- * Follows Single Responsibility Principle (SRP) by isolating logic from UI.
- */
+
 class StaffAnalyticsProcessor : IStudentTracker {
 
     private fun parseAmount(amountStr: String?): Double {

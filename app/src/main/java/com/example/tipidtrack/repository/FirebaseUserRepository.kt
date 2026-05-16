@@ -3,6 +3,7 @@ package com.example.tipidtrack.repository
 import com.example.tipidtrack.model.User
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.ListenerRegistration
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -14,23 +15,32 @@ class FirebaseUserRepository(
 ) : UserRepository {
 
     override fun getCurrentUser(): Flow<User?> = callbackFlow {
-        val uid = auth.currentUser?.uid
-        if (uid == null) {
-            trySend(null)
-            close()
-            return@callbackFlow
+        var firestoreListener: ListenerRegistration? = null
+
+        val authListener = FirebaseAuth.AuthStateListener { firebaseAuth ->
+            firestoreListener?.remove()
+            val uid = firebaseAuth.currentUser?.uid
+            
+            if (uid == null) {
+                trySend(null)
+            } else {
+                firestoreListener = db.collection("users").document(uid)
+                    .addSnapshotListener { snapshot, error ->
+                        if (error != null) {
+                            return@addSnapshotListener
+                        }
+                        val user = snapshot?.toObject(User::class.java)?.copy(id = uid)
+                        trySend(user)
+                    }
+            }
         }
 
-        val listener = db.collection("users").document(uid)
-            .addSnapshotListener { snapshot, error ->
-                if (error != null) {
-                    close(error)
-                    return@addSnapshotListener
-                }
-                val user = snapshot?.toObject(User::class.java)?.copy(id = uid)
-                trySend(user)
-            }
-        awaitClose { listener.remove() }
+        auth.addAuthStateListener(authListener)
+
+        awaitClose {
+            auth.removeAuthStateListener(authListener)
+            firestoreListener?.remove()
+        }
     }
 
     override suspend fun saveUser(user: User) {

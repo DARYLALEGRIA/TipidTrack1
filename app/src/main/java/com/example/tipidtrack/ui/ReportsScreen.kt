@@ -18,11 +18,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.*
 import androidx.compose.ui.graphics.*
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.tipidtrack.model.*
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -41,12 +43,9 @@ fun ReportsScreen(
     availableCycles: List<CycleManager.CycleRange> = emptyList(),
     onCycleSelected: (CycleManager.CycleRange) -> Unit = {},
     onNotificationClick: () -> Unit = {},
-    unreadNotificationsCount: Int = 0,
-    onSaveReport: (String) -> Unit = {}
+    unreadNotificationsCount: Int = 0
 ) {
     var showAccountDetailsDialog by remember { mutableStateOf(false) }
-    var showSaveDialog by remember { mutableStateOf(false) }
-    var reportNotes by remember { mutableStateOf("") }
 
     fun parseAmount(amountStr: String): Double {
         return amountStr.replace("₱", "").replace(",", "").toDoubleOrNull() ?: 0.0
@@ -187,20 +186,6 @@ fun ReportsScreen(
                 onCycleSelected = onCycleSelected
             )
 
-            // Save to Firebase Button
-            if (expenses.isNotEmpty()) {
-                Button(
-                    onClick = { showSaveDialog = true },
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3F51B5)),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Icon(Icons.Default.CloudUpload, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("SAVE REPORT TO CLOUD")
-                }
-            }
-
             if (expenses.isEmpty()) {
                 Text(
                     "No data available for reports.",
@@ -298,249 +283,94 @@ fun ReportsScreen(
         )
     }
 
-    if (showSaveDialog) {
-        AlertDialog(
-            onDismissRequest = { showSaveDialog = false },
-            title = { Text("Save Report") },
-            text = {
-                Column {
-                    Text("Add notes to this report (optional):")
-                    Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = reportNotes,
-                        onValueChange = { reportNotes = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        placeholder = { Text("e.g. Monthly budget summary") }
-                    )
-                }
-            },
-            confirmButton = {
-                Button(onClick = {
-                    onSaveReport(reportNotes)
-                    showSaveDialog = false
-                    reportNotes = ""
-                }) {
-                    Text("Save")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showSaveDialog = false }) {
-                    Text("Cancel")
-                }
-            }
-        )
-    }
+    // Fixed Bottom Navigation Bar
+    TipidTrackBottomNavigation(
+        currentScreen = "REPORTS",
+        onHomeClick = onHomeClick,
+        onBudgetsClick = onBudgetsClick,
+        onExpensesClick = onExpensesClick,
+        onReportsClick = { }
+    )
+}
 
-    // Bottom Navigation Bar
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFFE3F2FD))
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(8.dp),
-                horizontalArrangement = Arrangement.SpaceAround
-            ) {
-                BottomNavItem("HOME", Icons.Default.Home, false, onClick = onHomeClick)
-                BottomNavItem("BUDGETS", Icons.Default.AccountBalanceWallet, false, onClick = onBudgetsClick)
-                BottomNavItem("EXPENSES", Icons.AutoMirrored.Filled.List, false, onClick = onExpensesClick)
-                BottomNavItem("REPORTS", Icons.Default.Assessment, true, onClick = {})
-            }
-        }
+@Composable
+fun LegendItem(color: Color, label: String) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 4.dp)) {
+        Box(modifier = Modifier.size(12.dp).background(color, RoundedCornerShape(2.dp)))
+        Spacer(modifier = Modifier.width(4.dp))
+        Text(text = label, fontSize = 12.sp, color = Color.DarkGray)
     }
 }
 
 @Composable
 fun HorizontalWeeklySpendingChart(data: List<Pair<String, Double>>) {
-    val maxVal = (data.maxByOrNull { it.second }?.second ?: 1.0).toDouble().coerceAtLeast(1000.0)
-    val chartMax = if (maxVal > 1000) (Math.ceil(maxVal / 100.0) * 100.0).toFloat() else 1000f
-    val textMeasurer = rememberTextMeasurer()
-
-    Column(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
-        Canvas(modifier = Modifier.fillMaxWidth().height(200.dp)) {
-            val canvasWidth = size.width
-            val canvasHeight = size.height
-            val leftPadding = 120f
-            val bottomPadding = 60f
-            val chartWidth = canvasWidth - leftPadding - 40f
-            val chartHeight = canvasHeight - bottomPadding
-            
-            val barHeight = 40f
-            val spacing = (chartHeight - (data.size * barHeight)) / (data.size + 1)
-
-            // Draw X-axis labels and vertical grid lines
-            val steps = 10
-            for (i in 0..steps) {
-                val x = leftPadding + (i * (chartWidth / steps))
-                val value = (i * (chartMax / steps)).toInt()
-                
-                // Grid line
-                drawLine(
-                    color = Color.White.copy(alpha = 0.2f),
-                    start = Offset(x, 0f),
-                    end = Offset(x, chartHeight),
-                    strokeWidth = 1f
-                )
-                
-                // Label
-                val textResult = textMeasurer.measure(
-                    text = AnnotatedString(value.toString()),
-                    style = TextStyle(fontSize = 10.sp, color = Color(0xFF555555))
-                )
-                drawText(
-                    textLayoutResult = textResult,
-                    topLeft = Offset(x - textResult.size.width / 2, chartHeight + 10f)
-                )
+    val maxSpending = data.maxOfOrNull { it.second } ?: 1.0
+    Column(modifier = Modifier.fillMaxWidth()) {
+        data.forEach { (week, amount) ->
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(text = week, modifier = Modifier.width(60.dp), fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(24.dp)
+                        .background(Color.LightGray.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth((amount / maxSpending).toFloat().coerceIn(0f, 1f))
+                            .fillMaxHeight()
+                            .background(
+                                brush = Brush.horizontalGradient(listOf(Color(0xFF4FACFE), Color(0xFF00F2FE))),
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                    )
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(text = "₱${String.format(Locale.getDefault(), "%.2f", amount)}", fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }
-
-            // Draw bars and Y-axis labels
-            data.forEachIndexed { index, pair ->
-                val y = spacing + index * (barHeight + spacing)
-                val barWidth = (pair.second / chartMax * chartWidth).toFloat()
-                
-                // Label (WEEK 1, etc.)
-                val labelResult = textMeasurer.measure(
-                    text = AnnotatedString(pair.first),
-                    style = TextStyle(fontSize = 12.sp, color = Color(0xFF555555), fontWeight = FontWeight.Bold)
-                )
-                drawText(
-                    textLayoutResult = labelResult,
-                    topLeft = Offset(leftPadding - labelResult.size.width - 20f, y + (barHeight - labelResult.size.height) / 2)
-                )
-                
-                // Bar with rounded corners
-                drawRoundRect(
-                    color = Color(0xFF6DAEDC),
-                    topLeft = Offset(leftPadding, y),
-                    size = Size(barWidth, barHeight),
-                    cornerRadius = CornerRadius(4f, 4f)
-                )
-            }
-        }
-        
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Legend
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(modifier = Modifier.size(14.dp).background(Color(0xFF6DAEDC)))
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                "WEEKLY SPENDING", 
-                fontSize = 14.sp, 
-                color = Color(0xFF555555).copy(alpha = 0.8f), 
-                fontWeight = FontWeight.Bold
-            )
         }
     }
 }
 
 @Composable
 fun ThreeDLineChart(data: List<Pair<String, Double>>) {
-    val maxVal = (data.maxByOrNull { it.second }?.second ?: 1.0).toFloat().coerceAtLeast(1f)
-    val textMeasurer = rememberTextMeasurer()
+    val maxSpending = data.maxOfOrNull { it.second } ?: 1.0
+    val points = data.map { it.second }
     
-    Canvas(modifier = Modifier.fillMaxWidth().height(240.dp).padding(horizontal = 24.dp, vertical = 40.dp)) {
-        val canvasWidth = size.width
-        val canvasHeight = size.height - 40f
-        val pointSpacing = canvasWidth / (data.size - 1)
-        
-        val points = data.mapIndexed { index, pair ->
-            Offset(index * pointSpacing, canvasHeight - (pair.second / maxVal * canvasHeight).toFloat())
-        }
-        
-        val offset3d = 10f
-        
-        // Draw 3D Shadow/Depth Area
-        val shadowPath = Path().apply {
-            moveTo(points.first().x, points.first().y)
-            points.forEach { lineTo(it.x, it.y) }
-            lineTo(points.last().x + offset3d, points.last().y + offset3d)
-            for (i in points.size - 1 downTo 0) {
-                lineTo(points[i].x + offset3d, points[i].y + offset3d)
+    Column {
+        Canvas(modifier = Modifier.fillMaxWidth().height(200.dp).padding(16.dp)) {
+            val width = size.width
+            val height = size.height
+            val spacing = width / (points.size - 1).coerceAtLeast(1)
+            
+            val path = Path()
+            points.forEachIndexed { index, value ->
+                val x = index * spacing
+                val y = height - (value / maxSpending).toFloat() * height
+                if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
             }
-            close()
-        }
-        drawPath(shadowPath, color = Color.Gray.copy(alpha = 0.2f))
-
-        // Draw Line with 3D offset effect
-        for (i in 0 until points.size - 1) {
-            // Shadow line
-            drawLine(
-                color = Color.DarkGray.copy(alpha = 0.3f),
-                start = points[i] + Offset(offset3d, offset3d),
-                end = points[i+1] + Offset(offset3d, offset3d),
-                strokeWidth = 4f
-            )
-            // Main line
-            drawLine(
+            
+            drawPath(
+                path = path,
                 color = Color(0xFF3F51B5),
-                start = points[i],
-                end = points[i+1],
-                strokeWidth = 6f
+                style = Stroke(width = 4.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
             )
+            
+            points.forEachIndexed { index, value ->
+                val x = index * spacing
+                val y = height - (value / maxSpending).toFloat() * height
+                drawCircle(Color(0xFF3F51B5), radius = 6.dp.toPx(), center = Offset(x, y))
+                drawCircle(Color.White, radius = 3.dp.toPx(), center = Offset(x, y))
+            }
         }
         
-        // Draw Points, Values and Labels
-        points.forEachIndexed { index, point ->
-            drawCircle(Color(0xFF3F51B5), radius = 6f, center = point)
-            drawCircle(Color.White, radius = 3f, center = point)
-
-            // Draw Value (Number)
-            val valueText = "₱${data[index].second.toInt()}"
-            val valueResult = textMeasurer.measure(
-                text = AnnotatedString(valueText),
-                style = TextStyle(fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color.Black)
-            )
-            drawText(
-                textLayoutResult = valueResult,
-                topLeft = Offset(point.x - valueResult.size.width / 2, point.y - 25f)
-            )
-
-            // Draw Label (Day)
-            val labelResult = textMeasurer.measure(
-                text = AnnotatedString(data[index].first),
-                style = TextStyle(fontSize = 10.sp, color = Color.DarkGray)
-            )
-            drawText(
-                textLayoutResult = labelResult,
-                topLeft = Offset(point.x - labelResult.size.width / 2, canvasHeight + 10f)
-            )
-        }
-    }
-}
-
-@Composable
-fun LegendItem(color: Color, text: String) {
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 4.dp)) {
-        Box(modifier = Modifier.size(12.dp).background(color))
-        Spacer(modifier = Modifier.width(4.dp))
-        Text(text = text, fontSize = 12.sp, color = Color.DarkGray)
-    }
-}
-
-@Composable
-fun BarItem(label: String, progress: Float, value: String) {
-    Column(modifier = Modifier.padding(vertical = 8.dp)) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(text = label, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.Gray)
-            Text(text = value, fontSize = 10.sp, color = Color.Gray)
+            data.forEach { (day, _) ->
+                Text(text = day, fontSize = 10.sp, color = Color.Gray)
+            }
         }
-        Spacer(modifier = Modifier.height(4.dp))
-        LinearProgressIndicator(
-            progress = { progress },
-            modifier = Modifier.fillMaxWidth().height(12.dp),
-            color = if (progress > 0.9f) Color.Red else Color(0xFF5DADE2),
-            trackColor = Color.LightGray.copy(alpha = 0.5f),
-            strokeCap = androidx.compose.ui.graphics.StrokeCap.Round
-        )
     }
 }

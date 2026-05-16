@@ -2,7 +2,6 @@ package com.example.tipidtrack.repository
 
 import com.example.tipidtrack.model.ExpenseItem
 import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.Query
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -13,9 +12,10 @@ class FirebaseExpenseRepository(
 ) : ExpenseRepository {
 
     override fun getExpenses(userId: String): Flow<List<ExpenseItem>> = callbackFlow {
+        // Removed .orderBy("date") to avoid mandatory composite index requirements.
+        // Sorting is now handled in the ViewModel or UI.
         val listener = db.collection("expenses")
             .whereEqualTo("userId", userId)
-            .orderBy("date", Query.Direction.DESCENDING)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
                     close(error)
@@ -29,7 +29,6 @@ class FirebaseExpenseRepository(
 
     override fun getAllExpenses(): Flow<List<ExpenseItem>> = callbackFlow {
         val listener = db.collection("expenses")
-            .orderBy("date", Query.Direction.DESCENDING)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
                     close(error)

@@ -1,6 +1,7 @@
 package com.example.tipidtrack.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -26,6 +27,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.tipidtrack.model.User
 import com.example.tipidtrack.model.UserRole
+import kotlinx.coroutines.delay
+import java.util.UUID
 
 @Composable
 fun LoginScreen(
@@ -35,6 +38,19 @@ fun LoginScreen(
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
+    var isLoading by remember { mutableStateOf(false) }
+
+    // Safety: Reset loading if user changes input or if it's been too long
+    LaunchedEffect(email, password) {
+        isLoading = false
+    }
+    
+    LaunchedEffect(isLoading) {
+        if (isLoading) {
+            delay(8000) // Re-enable after 8 seconds if nothing happens
+            isLoading = false
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -72,9 +88,10 @@ fun LoginScreen(
         OutlinedTextField(
             value = email,
             onValueChange = { email = it },
-            label = { Text("Username", color = Color.White) },
+            label = { Text("Username or Email", color = Color.White) },
             modifier = Modifier.fillMaxWidth(),
-            colors = registerTextFieldColors()
+            colors = registerTextFieldColors(),
+            enabled = !isLoading
         )
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -86,6 +103,7 @@ fun LoginScreen(
             modifier = Modifier.fillMaxWidth(),
             visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            enabled = !isLoading,
             trailingIcon = {
                 val image = if (passwordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff
                 IconButton(onClick = { passwordVisible = !passwordVisible }) {
@@ -98,12 +116,24 @@ fun LoginScreen(
         Spacer(modifier = Modifier.height(24.dp))
 
         Button(
-            onClick = { onLoginClick(email, password) },
+            onClick = { 
+                if (email.isNotBlank() && password.isNotBlank()) {
+                    isLoading = true
+                    onLoginClick(email.trim(), password.trim())
+                } else {
+                    onLoginClick(email.trim(), password.trim()) // Triggers blank error toast
+                }
+            },
             modifier = Modifier.fillMaxWidth(),
             colors = ButtonDefaults.buttonColors(containerColor = Color.White),
-            shape = RoundedCornerShape(8.dp)
+            shape = RoundedCornerShape(8.dp),
+            enabled = !isLoading
         ) {
-            Text("Login", color = Color(0xFF2D4B8E), fontWeight = FontWeight.Bold)
+            if (isLoading) {
+                CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color(0xFF2D4B8E))
+            } else {
+                Text("Login", color = Color(0xFF2D4B8E), fontWeight = FontWeight.Bold)
+            }
         }
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -111,13 +141,13 @@ fun LoginScreen(
         Text(
             text = "Don't have an account? Register here",
             color = Color.White,
-            modifier = Modifier.clickable { onRegisterClick() }
+            modifier = Modifier.clickable(enabled = !isLoading) { onRegisterClick() }
         )
     }
 }
 
 enum class RegisterStep {
-    ROLE_SELECTION, DETAILS, MPIN_SETUP, TERMS
+    DETAILS, MPIN_SETUP, TERMS
 }
 
 @Composable
@@ -126,14 +156,14 @@ fun RegisterScreen(
     onRegisterComplete: (User) -> Unit,
     onBackToLogin: () -> Unit
 ) {
-    var currentStep by remember { mutableStateOf(RegisterStep.ROLE_SELECTION) }
+    var currentStep by remember { mutableStateOf(RegisterStep.DETAILS) }
     
     var name by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
-    var selectedRole by remember { mutableStateOf(UserRole.STUDENT) }
+    val selectedRole = UserRole.STUDENT
     var mpin by remember { mutableStateOf("") }
     var confirmMpin by remember { mutableStateOf("") }
     var agreedToTerms by remember { mutableStateOf(false) }
@@ -170,7 +200,6 @@ fun RegisterScreen(
         Text(
             text = when(currentStep) {
                 RegisterStep.DETAILS -> "Create Account"
-                RegisterStep.ROLE_SELECTION -> "Select Role"
                 RegisterStep.MPIN_SETUP -> "Setup MPIN"
                 RegisterStep.TERMS -> "Terms & Conditions"
             },
@@ -183,16 +212,15 @@ fun RegisterScreen(
 
         when (currentStep) {
             RegisterStep.DETAILS -> {
-                if (selectedRole == UserRole.STUDENT) {
-                    OutlinedTextField(
-                        value = name,
-                        onValueChange = { name = it },
-                        label = { Text("Full Name", color = Color.White) },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = registerTextFieldColors()
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                }
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Full Name", color = Color.White) },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = registerTextFieldColors()
+                )
+                
+                Spacer(modifier = Modifier.height(16.dp))
                 
                 OutlinedTextField(
                     value = email,
@@ -202,17 +230,17 @@ fun RegisterScreen(
                     colors = registerTextFieldColors()
                 )
                 
-                if (selectedRole == UserRole.STUDENT) {
-                    Spacer(modifier = Modifier.height(16.dp))
-                    OutlinedTextField(
-                        value = phone,
-                        onValueChange = { phone = it },
-                        label = { Text("Phone Number", color = Color.White) },
-                        modifier = Modifier.fillMaxWidth(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-                        colors = registerTextFieldColors()
-                    )
-                }
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                OutlinedTextField(
+                    value = phone,
+                    onValueChange = { phone = it },
+                    label = { Text("Phone Number", color = Color.White) },
+                    modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                    colors = registerTextFieldColors()
+                )
+
                 Spacer(modifier = Modifier.height(16.dp))
                 
                 Column {
@@ -276,25 +304,8 @@ fun RegisterScreen(
                         } else if (password != confirmPassword) {
                             confirmPasswordError = true
                         } else {
-                            if (selectedRole == UserRole.STUDENT) {
-                                if (name.isNotEmpty() && email.isNotEmpty() && phone.isNotEmpty()) {
-                                    currentStep = RegisterStep.MPIN_SETUP
-                                }
-                            } else if (selectedRole == UserRole.STAFF) {
-                                if (email.isNotEmpty()) {
-                                    currentStep = RegisterStep.TERMS
-                                }
-                            } else {
-                                if (email.isNotEmpty()) {
-                                    onRegisterComplete(User(
-                                        name = name,
-                                        email = email,
-                                        phone = phone,
-                                        password = password,
-                                        mpin = mpin,
-                                        role = selectedRole
-                                    ))
-                                }
+                            if (name.isNotBlank() && email.isNotBlank() && phone.isNotBlank()) {
+                                currentStep = RegisterStep.MPIN_SETUP
                             }
                         }
                     },
@@ -304,227 +315,190 @@ fun RegisterScreen(
                 ) {
                     Text("Next", color = Color(0xFF2D4B8E), fontWeight = FontWeight.Bold)
                 }
-                Spacer(modifier = Modifier.height(8.dp))
-                TextButton(onClick = { currentStep = RegisterStep.ROLE_SELECTION }) {
-                    Text("Back", color = Color.White)
-                }
             }
-            RegisterStep.ROLE_SELECTION -> {
-                val availableRoles = remember(existingUsers) {
-                    UserRole.values().filter { role ->
-                        when (role) {
-                            UserRole.ADMIN -> existingUsers.none { it.role == UserRole.ADMIN }
-                            UserRole.STAFF -> existingUsers.none { it.role == UserRole.STAFF }
-                            UserRole.STUDENT -> true
-                        }
-                    }
-                }
-
-                LaunchedEffect(availableRoles) {
-                    if (selectedRole !in availableRoles) {
-                        selectedRole = UserRole.STUDENT
-                    }
-                }
-
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalAlignment = Alignment.Start
-                ) {
-                    Text("Choose your role:", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(16.dp))
-                    
-                    availableRoles.forEach { role ->
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { selectedRole = role }
-                                .padding(vertical = 8.dp)
-                        ) {
-                            RadioButton(
-                                selected = selectedRole == role,
-                                onClick = { selectedRole = role },
-                                colors = RadioButtonDefaults.colors(selectedColor = Color.White, unselectedColor = Color.White.copy(alpha = 0.6f))
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = when(role) {
-                                    UserRole.STUDENT -> "Student"
-                                    UserRole.STAFF -> "School Staff / Adviser"
-                                    UserRole.ADMIN -> "IT Administrator"
-                                },
-                                color = Color.White,
-                                fontSize = 16.sp
-                            )
-                        }
-                    }
-                }
-                
-                Spacer(modifier = Modifier.height(32.dp))
-                Button(
-                    onClick = { currentStep = RegisterStep.DETAILS },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color.White),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Text("Next", color = Color(0xFF2D4B8E), fontWeight = FontWeight.Bold)
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                TextButton(onClick = { onBackToLogin() }) {
-                    Text("Back to Login", color = Color.White)
-                }
-            }
+            
             RegisterStep.MPIN_SETUP -> {
-                OutlinedTextField(
-                    value = mpin,
-                    onValueChange = { if (it.length <= 4) mpin = it },
-                    label = { Text("Setup 4-Digit MPIN", color = Color.White) },
-                    modifier = Modifier.fillMaxWidth(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                    colors = registerTextFieldColors()
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                OutlinedTextField(
-                    value = confirmMpin,
-                    onValueChange = { 
-                        if (it.length <= 4) {
-                            confirmMpin = it
-                            mpinConfirmError = false
+                MpinSetupStep(
+                    mpin = mpin,
+                    confirmMpin = confirmMpin,
+                    onMpinChange = { mpin = it },
+                    onConfirmMpinChange = { confirmMpin = it },
+                    onNext = { 
+                        if (mpin == confirmMpin && mpin.length == 4) {
+                            currentStep = RegisterStep.TERMS
+                        } else {
+                            mpinConfirmError = true
                         }
                     },
-                    label = { Text("Confirm MPIN", color = Color.White) },
-                    modifier = Modifier.fillMaxWidth(),
-                    isError = mpinConfirmError,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                    colors = registerTextFieldColors(mpinConfirmError),
-                    supportingText = {
-                        if (mpinConfirmError) {
-                            Text("MPINs do not match!")
-                        }
-                    }
+                    error = mpinConfirmError
                 )
-                Spacer(modifier = Modifier.height(32.dp))
-                Button(
-                    onClick = { 
-                        if (mpin.length == 4) {
-                            if (mpin == confirmMpin) {
-                                currentStep = RegisterStep.TERMS
-                            } else {
-                                mpinConfirmError = true
-                            }
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color.White),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Text("Next", color = Color(0xFF2D4B8E), fontWeight = FontWeight.Bold)
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                TextButton(onClick = { currentStep = RegisterStep.ROLE_SELECTION }) {
-                    Text("Back", color = Color.White)
-                }
             }
+            
             RegisterStep.TERMS -> {
-                val termsText = when (selectedRole) {
-                    UserRole.STAFF -> {
-                        "Terms and Conditions for School Staff / Advisers\n\n1. Introduction: Welcome to TipidTrack. As an Adviser, you agree to oversee student financial literacy.\n\n2. Privacy: We value the privacy of your students. Student data is stored securely.\n\n3. Security: You are responsible for maintaining the confidentiality of your account password."
-                    }
-                    else -> {
-                        "Terms and Conditions for Students\n\n1. Introduction: Welcome to TipidTrack. By using our app, you agree to these terms to help you save.\n\n2. Privacy: We value your privacy. Your data is stored securely."
-                    }
-                }
-
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(300.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.2f))
-                ) {
-                    Column(modifier = Modifier.padding(16.dp).verticalScroll(rememberScrollState())) {
-                        Text(
-                            text = termsText,
-                            color = Color.White,
-                            fontSize = 14.sp
-                        )
-                    }
-                }
-                Spacer(modifier = Modifier.height(16.dp))
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Checkbox(
-                        checked = agreedToTerms,
-                        onCheckedChange = { agreedToTerms = it },
-                        colors = CheckboxDefaults.colors(checkmarkColor = Color(0xFF2D4B8E), uncheckedColor = Color.White)
-                    )
-                    Text("I agree to the Terms and Conditions", color = Color.White, fontSize = 14.sp)
-                }
-                Spacer(modifier = Modifier.height(32.dp))
-                Button(
-                    onClick = { 
+                TermsStep(
+                    agreed = agreedToTerms,
+                    onAgreedChange = { agreedToTerms = it },
+                    onComplete = {
                         if (agreedToTerms) {
-                            onRegisterComplete(User(
-                                name = name,
-                                email = email,
-                                phone = phone,
+                            val newUser = User(
+                                id = UUID.randomUUID().toString(),
+                                name = name.trim(),
+                                email = email.trim(),
                                 password = password,
-                                mpin = mpin,
-                                role = selectedRole
-                            ))
+                                role = selectedRole,
+                                mpin = mpin
+                            )
+                            onRegisterComplete(newUser)
                         }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color.White),
-                    shape = RoundedCornerShape(8.dp),
-                    enabled = agreedToTerms
-                ) {
-                    Text("Register", color = Color(0xFF2D4B8E), fontWeight = FontWeight.Bold)
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                TextButton(onClick = { 
-                    if (selectedRole == UserRole.STUDENT) {
-                        currentStep = RegisterStep.MPIN_SETUP 
-                    } else {
-                        currentStep = RegisterStep.DETAILS
                     }
-                }) {
-                    Text("Back", color = Color.White)
-                }
+                )
             }
         }
 
         Spacer(modifier = Modifier.height(16.dp))
+        TextButton(onClick = onBackToLogin) {
+            Text("Back to Login", color = Color.White)
+        }
+    }
+}
 
-        Text(
-            text = "Already have an account? Login",
-            color = Color.White,
-            modifier = Modifier.clickable { onBackToLogin() }
+@Composable
+fun MpinSetupStep(
+    mpin: String,
+    confirmMpin: String,
+    onMpinChange: (String) -> Unit,
+    onConfirmMpinChange: (String) -> Unit,
+    onNext: () -> Unit,
+    error: Boolean
+) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        OutlinedTextField(
+            value = mpin,
+            onValueChange = { if (it.length <= 4) onMpinChange(it) },
+            label = { Text("Enter 4-digit MPIN", color = Color.White) },
+            modifier = Modifier.fillMaxWidth(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+            visualTransformation = PasswordVisualTransformation(),
+            colors = registerTextFieldColors()
         )
+        Spacer(modifier = Modifier.height(16.dp))
+        OutlinedTextField(
+            value = confirmMpin,
+            onValueChange = { if (it.length <= 4) onConfirmMpinChange(it) },
+            label = { Text("Confirm MPIN", color = Color.White) },
+            modifier = Modifier.fillMaxWidth(),
+            isError = error,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+            visualTransformation = PasswordVisualTransformation(),
+            colors = registerTextFieldColors(error)
+        )
+        if (error) {
+            Text("MPINs do not match", color = Color.Yellow, fontSize = 12.sp)
+        }
+        Spacer(modifier = Modifier.height(32.dp))
+        Button(
+            onClick = {
+                if (mpin == confirmMpin && mpin.length == 4) {
+                    onNext()
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(containerColor = Color.White),
+            shape = RoundedCornerShape(8.dp)
+        ) {
+            Text("Continue", color = Color(0xFF2D4B8E), fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
+fun TermsStep(
+    agreed: Boolean,
+    onAgreedChange: (Boolean) -> Unit,
+    onComplete: () -> Unit
+) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(300.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0x33FFFFFF))
+        ) {
+            Column(modifier = Modifier.padding(16.dp).verticalScroll(rememberScrollState())) {
+                Text(
+                    text = """
+                        Welcome to TipidTrack! By using this application, you agree to the following terms and conditions:
+
+                        1. Data Privacy: We value your privacy. All your financial data (expenses, budgets, and goals) are stored securely in our database. We do not share your personal information with third parties.
+
+                        2. User Responsibility: You are responsible for maintaining the confidentiality of your account credentials, including your password and MPIN.
+
+                        3. Accuracy of Data: TipidTrack is a tool to help you manage your finances. While we strive for accuracy, the responsibility for the data entered lies with the user.
+
+                        4. Usage: This app is intended for personal financial tracking and educational purposes.
+
+                        5. Modifications: We reserve the right to modify these terms at any time. Continued use of the app constitutes acceptance of the updated terms.
+
+                        Thank you for choosing TipidTrack to help you stay on track with your savings!
+                    """.trimIndent(),
+                    color = Color.White,
+                    fontSize = 14.sp
+                )
+            }
+        }
         
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(
+                checked = agreed,
+                onCheckedChange = onAgreedChange,
+                colors = CheckboxDefaults.colors(uncheckedColor = Color.White, checkedColor = Color.White, checkmarkColor = Color(0xFF2D4B8E))
+            )
+            Text("I agree to the Terms and Conditions", color = Color.White)
+        }
+        
+        Spacer(modifier = Modifier.height(32.dp))
+        
+        Button(
+            onClick = onComplete,
+            enabled = agreed,
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(containerColor = Color.White, disabledContainerColor = Color.LightGray),
+            shape = RoundedCornerShape(8.dp)
+        ) {
+            Text("Complete Registration", color = Color(0xFF2D4B8E), fontWeight = FontWeight.Bold)
+        }
     }
 }
 
 @Composable
 fun registerTextFieldColors(isError: Boolean = false) = OutlinedTextFieldDefaults.colors(
-    focusedBorderColor = if (isError) Color.Red else Color.White,
-    unfocusedBorderColor = if (isError) Color.Red else Color.White.copy(alpha = 0.7f),
-    errorBorderColor = Color.Red,
+    focusedBorderColor = Color.White,
+    unfocusedBorderColor = Color.White.copy(alpha = 0.7f),
+    focusedLabelColor = Color.White,
+    unfocusedLabelColor = Color.White.copy(alpha = 0.7f),
+    cursorColor = Color.White,
     focusedTextColor = Color.White,
     unfocusedTextColor = Color.White,
-    cursorColor = Color.White,
-    errorLabelColor = Color.Red,
-    errorSupportingTextColor = Color.Red
+    errorBorderColor = Color.Yellow,
+    errorLabelColor = Color.Yellow,
+    errorSupportingTextColor = Color.Yellow
 )
 
 @Composable
 fun MPINScreen(
-    userName: String = "ka-Tipid",
+    userName: String,
     onMpinComplete: (String) -> Unit
 ) {
     var mpin by remember { mutableStateOf("") }
+    
+    LaunchedEffect(mpin) {
+        if (mpin.length == 4) {
+            delay(1000)
+            mpin = ""
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -537,14 +511,12 @@ fun MPINScreen(
     ) {
         Box(
             modifier = Modifier
-                .weight(1.3f)
+                .weight(1.5f)
                 .fillMaxWidth()
+                .padding(24.dp),
+            contentAlignment = Alignment.Center
         ) {
-            Column(
-                modifier = Modifier.fillMaxSize(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         modifier = Modifier

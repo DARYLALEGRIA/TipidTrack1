@@ -21,7 +21,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.tipidtrack.model.*
 import java.text.NumberFormat
-import java.text.SimpleDateFormat
 import java.util.*
 
 @Composable
@@ -35,56 +34,20 @@ fun StaffDashboard(
 ) {
     var showAccountDetailsDialog by remember { mutableStateOf(false) }
     val currencyFormatter = NumberFormat.getCurrencyInstance(Locale.forLanguageTag("en-PH"))
+    
+    // Using the dedicated analytics processor for consistency and error handling
+    val analytics: IStudentTracker = remember { StaffAnalyticsProcessor() }
 
-    fun parseAmount(amountStr: String?): Double {
-        if (amountStr == null) return 0.0
-        return amountStr.replace("₱", "").replace(",", "").trim().toDoubleOrNull() ?: 0.0
-    }
-
+    val studentExpenses = analytics.getStudentExpenses(allExpenses, allUsers)
+    val totalSpending = analytics.calculateTotalSpending(studentExpenses)
+    
     val students = allUsers.filter { it.role == UserRole.STUDENT }
-    val studentIds = students.map { it.id }.toSet()
+    val studentCount = if (students.isNotEmpty()) students.size else studentExpenses.mapNotNull { it.userId }.distinct().size
+    val averageSpending = analytics.calculateAverageSpending(totalSpending, studentCount)
 
-    val studentExpenses = if (studentIds.isNotEmpty()) {
-        allExpenses.filter { it.userId in studentIds }
-    } else {
-        allExpenses.filter { it.userId != user?.id }
-    }
-
-    val totalSpending = studentExpenses.sumOf { parseAmount(it.amount) }
-    val activeStudentIds = studentExpenses.mapNotNull { it.userId }.distinct()
-    val uniqueStudentsCount = if (students.isNotEmpty()) students.size else activeStudentIds.count().coerceAtLeast(1)
-    val averageSpending = if (uniqueStudentsCount > 0) totalSpending / uniqueStudentsCount else 0.0
-
-    val categoryDistribution = studentExpenses.groupBy { it.category?.trim() ?: "Other" }
-        .mapValues { entry -> entry.value.sumOf { parseAmount(it.amount) } }
-        .toList()
-        .sortedByDescending { it.second }
-
-    val monthlyTrends = studentExpenses.groupBy { 
-        try {
-            val dateStr = it.date ?: ""
-            if (dateStr.isEmpty()) "Unknown"
-            else {
-                val date = SimpleDateFormat("MM/dd/yy", Locale.getDefault()).parse(dateStr)
-                SimpleDateFormat("MMMM yyyy", Locale.getDefault()).format(date!!)
-            }
-        } catch (e: Exception) {
-            "Unknown"
-        }
-    }.mapValues { entry -> entry.value.sumOf { parseAmount(it.amount) } }
-    .toList()
-    .sortedByDescending { it.first }
-
-    val anonymousBreakdown = if (students.isNotEmpty()) {
-        students.map { s ->
-            allExpenses.filter { it.userId == s.id }.sumOf { parseAmount(it.amount) }
-        }
-    } else {
-        activeStudentIds.map { id ->
-            allExpenses.filter { it.userId == id }.sumOf { parseAmount(it.amount) }
-        }
-    }.sortedByDescending { it }
-     .mapIndexed { index, spent -> "Student ${index + 1}" to spent }
+    val categoryDistribution = analytics.getCategoryDistribution(studentExpenses)
+    val monthlyTrends = analytics.getMonthlyTrends(studentExpenses)
+    val anonymousBreakdown = analytics.getAnonymousSpendingHabits(studentExpenses, allUsers)
 
     Column(
         modifier = Modifier
@@ -160,7 +123,7 @@ fun StaffDashboard(
                     }
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("Tracked Individuals:", color = Color.Black)
-                        Text("${if (students.isNotEmpty()) students.size else activeStudentIds.size}", fontWeight = FontWeight.Bold, color = Color.Black)
+                        Text("$studentCount", fontWeight = FontWeight.Bold, color = Color.Black)
                     }
                 }
             }

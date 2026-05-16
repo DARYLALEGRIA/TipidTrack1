@@ -1,5 +1,6 @@
 package com.example.tipidtrack.viewmodel
 
+import android.util.Log
 import androidx.compose.runtime.*
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -16,7 +17,8 @@ class MainViewModel(
     private val expenseRepository: ExpenseRepository,
     private val budgetRepository: BudgetRepository,
     private val goalRepository: GoalRepository,
-    private val notificationRepository: NotificationRepository
+    private val notificationRepository: NotificationRepository,
+    private val reportRepository: ReportRepository
 ) : ViewModel() {
 
     var currentUser by mutableStateOf<User?>(null)
@@ -46,24 +48,28 @@ class MainViewModel(
 
     private fun observeCurrentUser() {
         viewModelScope.launch {
-            userRepository.getCurrentUser().collect { user ->
-                currentUser = user
-                if (user != null) {
-                    observeUserData(user.id, user.role)
-                    if (selectedCycleRange == null && user.cycleStartDate != null) {
-                        selectedCycleRange = CycleManager.getCycleRange(user.cycleStartDate)
+            userRepository.getCurrentUser()
+                .catch { e -> Log.e("MainViewModel", "Error observing current user", e) }
+                .collect { user ->
+                    currentUser = user
+                    if (user != null) {
+                        observeUserData(user.id, user.role)
+                        if (selectedCycleRange == null && !user.cycleStartDate.isNullOrEmpty()) {
+                            selectedCycleRange = CycleManager.getCycleRange(user.cycleStartDate)
+                        }
                     }
                 }
-            }
         }
     }
 
     private fun observeAllUsers() {
         viewModelScope.launch {
-            userRepository.getAllUsers().collect { users ->
-                allUsers.clear()
-                allUsers.addAll(users)
-            }
+            userRepository.getAllUsers()
+                .catch { e -> Log.e("MainViewModel", "Error observing all users", e) }
+                .collect { users ->
+                    allUsers.clear()
+                    allUsers.addAll(users)
+                }
         }
     }
 
@@ -74,10 +80,13 @@ class MainViewModel(
             } else {
                 expenseRepository.getExpenses(userId)
             }
-            expensesFlow.collect { list ->
-                allExpenses.clear()
-                allExpenses.addAll(list)
-            }
+            expensesFlow
+                .catch { e -> Log.e("MainViewModel", "Error observing expenses", e) }
+                .collect { list ->
+                    allExpenses.clear()
+                    allExpenses.addAll(list)
+                    autoSaveReport()
+                }
         }
 
         viewModelScope.launch {
@@ -86,31 +95,42 @@ class MainViewModel(
             } else {
                 budgetRepository.getBudgets(userId)
             }
-            budgetsFlow.collect { list ->
-                allBudgets.clear()
-                allBudgets.addAll(list)
-            }
+            budgetsFlow
+                .catch { e -> Log.e("MainViewModel", "Error observing budgets", e) }
+                .collect { list ->
+                    allBudgets.clear()
+                    allBudgets.addAll(list)
+                    autoSaveReport()
+                }
         }
 
         viewModelScope.launch {
-            goalRepository.getGoals(userId).collect { list ->
-                allGoals.clear()
-                allGoals.addAll(list)
-            }
+            goalRepository.getGoals(userId)
+                .catch { e -> Log.e("MainViewModel", "Error observing goals", e) }
+                .collect { list ->
+                    allGoals.clear()
+                    allGoals.addAll(list)
+                }
         }
 
         viewModelScope.launch {
-            notificationRepository.getNotifications(userId).collect { list ->
-                notifications.clear()
-                notifications.addAll(list)
-            }
+            notificationRepository.getNotifications(userId)
+                .catch { e -> Log.e("MainViewModel", "Error observing notifications", e) }
+                .collect { list ->
+                    notifications.clear()
+                    notifications.addAll(list)
+                }
         }
     }
 
     fun updateProfileImage(uri: String) {
         val user = currentUser ?: return
         viewModelScope.launch {
-            userRepository.saveUser(user.copy(profileImageUri = uri))
+            try {
+                userRepository.saveUser(user.copy(profileImageUri = uri))
+            } catch (e: Exception) {
+                Log.e("MainViewModel", "Error updating profile image", e)
+            }
         }
     }
 
@@ -125,14 +145,24 @@ class MainViewModel(
             userId = user.id
         )
         viewModelScope.launch {
-            expenseRepository.saveExpense(newItem)
-            checkBudgetsAndNotify(category, parseAmount(amount))
+            try {
+                expenseRepository.saveExpense(newItem)
+                // Pass the new item's ID to exclude it from the sum in checkBudgetsAndNotify
+                // This prevents double-counting if the Firestore listener updates allExpenses quickly.
+                checkBudgetsAndNotify(category, parseAmount(amount), newItem.id)
+            } catch (e: Exception) {
+                Log.e("MainViewModel", "Error adding expense", e)
+            }
         }
     }
 
     fun deleteExpense(id: String) {
         viewModelScope.launch {
-            expenseRepository.deleteExpense(id)
+            try {
+                expenseRepository.deleteExpense(id)
+            } catch (e: Exception) {
+                Log.e("MainViewModel", "Error deleting expense", e)
+            }
         }
     }
 
@@ -140,13 +170,21 @@ class MainViewModel(
         val user = currentUser ?: return
         val currentDate = SimpleDateFormat("MM/dd/yy", Locale.getDefault()).format(Date())
         viewModelScope.launch {
-            budgetRepository.saveBudget(budget.copy(date = currentDate, userId = user.id))
+            try {
+                budgetRepository.saveBudget(budget.copy(date = currentDate, userId = user.id))
+            } catch (e: Exception) {
+                Log.e("MainViewModel", "Error adding budget", e)
+            }
         }
     }
 
     fun deleteBudget(id: String) {
         viewModelScope.launch {
-            budgetRepository.deleteBudget(id)
+            try {
+                budgetRepository.deleteBudget(id)
+            } catch (e: Exception) {
+                Log.e("MainViewModel", "Error deleting budget", e)
+            }
         }
     }
 
@@ -154,14 +192,22 @@ class MainViewModel(
         val user = currentUser ?: return
         val currentDate = SimpleDateFormat("MM/dd/yy", Locale.getDefault()).format(Date())
         viewModelScope.launch {
-            goalRepository.saveGoal(goal.copy(userId = user.id, createdAt = currentDate))
-            checkGoalsAndNotify()
+            try {
+                goalRepository.saveGoal(goal.copy(userId = user.id, createdAt = currentDate))
+                checkGoalsAndNotify()
+            } catch (e: Exception) {
+                Log.e("MainViewModel", "Error adding goal", e)
+            }
         }
     }
 
     fun deleteGoal(id: String) {
         viewModelScope.launch {
-            goalRepository.deleteGoal(id)
+            try {
+                goalRepository.deleteGoal(id)
+            } catch (e: Exception) {
+                Log.e("MainViewModel", "Error deleting goal", e)
+            }
         }
     }
 
@@ -169,38 +215,88 @@ class MainViewModel(
         val user = currentUser ?: return
         val newAllowance = user.totalAllowance + amount
         viewModelScope.launch {
-            userRepository.saveUser(user.copy(totalAllowance = newAllowance))
-            checkGoalsAndNotify()
+            try {
+                userRepository.saveUser(user.copy(totalAllowance = newAllowance))
+                checkGoalsAndNotify()
+            } catch (e: Exception) {
+                Log.e("MainViewModel", "Error adding allowance", e)
+            }
         }
     }
 
     fun markNotificationAsRead(id: String) {
         viewModelScope.launch {
-            notificationRepository.markAsRead(id)
+            try {
+                notificationRepository.markAsRead(id)
+            } catch (e: Exception) {
+                Log.e("MainViewModel", "Error marking notification as read", e)
+            }
         }
     }
 
     fun clearNotifications() {
         val user = currentUser ?: return
         viewModelScope.launch {
-            notificationRepository.clearAll(user.id)
+            try {
+                notificationRepository.clearAll(user.id)
+            } catch (e: Exception) {
+                Log.e("MainViewModel", "Error clearing notifications", e)
+            }
         }
     }
 
-    private suspend fun checkBudgetsAndNotify(category: String, addedAmount: Double) {
+    private fun autoSaveReport() {
+        val user = currentUser ?: return
+        if (user.role != UserRole.STUDENT) return
+        
+        val cycle = selectedCycleRange ?: return
+        val cycleStr = CycleManager.formatCycle(cycle)
+        
+        val expensesInCycle = filteredExpenses
+        if (expensesInCycle.isEmpty()) return
+
+        val categoryData = expensesInCycle.groupBy { (it.category ?: "").uppercase() }
+            .mapValues { entry -> entry.value.sumOf { parseAmount(it.amount ?: "") } }
+        
+        val totalSpentValue = categoryData.values.sum()
+        
+        // Use a deterministic ID based on user and cycle to overwrite the same report
+        val reportId = "${user.id}_${cycleStr.replace("/", "-").replace(" ", "_")}"
+        
+        val report = ReportItem(
+            id = reportId,
+            userId = user.id,
+            cycleRange = cycleStr,
+            totalSpent = totalSpentValue,
+            categoryBreakdown = categoryData,
+            generatedAt = System.currentTimeMillis(),
+            notes = "Automatically updated"
+        )
+
+        viewModelScope.launch {
+            try {
+                reportRepository.saveReport(report)
+            } catch (e: Exception) {
+                Log.e("MainViewModel", "Error auto-saving report", e)
+            }
+        }
+    }
+
+    private suspend fun checkBudgetsAndNotify(category: String, addedAmount: Double, excludeExpenseId: String? = null) {
         val user = currentUser ?: return
         val budgetItem = allBudgets.find { 
             it.userId == user.id && it.category?.trim().equals(category.trim(), ignoreCase = true) == true 
         } ?: return
         
         val budgetLimit = parseAmount(budgetItem.budget ?: "0")
-        val currentSpentInCycle = filteredExpenses
-            .filter { it.category?.trim().equals(category.trim(), ignoreCase = true) == true }
-            .sumOf { parseAmount(it.amount ?: "0") }
         
-        val totalSpent = currentSpentInCycle // Already includes the newly added expense if the flow updated fast enough, 
-        // but to be safe we might want to pass the addedAmount separately if we want immediate check.
-        // Actually, since we call this *after* saveExpense, the flow might not have emitted yet.
+        // Calculate current spent in cycle, excluding the one we just added if it's already in the list
+        val currentSpentInCycle = filteredExpenses
+            .filter { 
+                it.category?.trim().equals(category.trim(), ignoreCase = true) == true && 
+                it.id != excludeExpenseId 
+            }
+            .sumOf { parseAmount(it.amount ?: "0") }
         
         val checkAmount = currentSpentInCycle + addedAmount
 
@@ -234,7 +330,11 @@ class MainViewModel(
                 it.type == newNotif.type && it.category == newNotif.category && (System.currentTimeMillis() - (it.timestamp ?: 0)) < 10000 
             }
             if (!recentlyNotified) {
-                notificationRepository.saveNotification(newNotif)
+                try {
+                    notificationRepository.saveNotification(newNotif)
+                } catch (e: Exception) {
+                    Log.e("MainViewModel", "Error saving notification", e)
+                }
             }
         }
     }
@@ -249,13 +349,17 @@ class MainViewModel(
                     it.type == NotificationType.SAVINGS && it.title?.contains(goal.title ?: "") == true
                 }
                 if (!alreadyNotified) {
-                    notificationRepository.saveNotification(NotificationItem(
-                        title = "Goal Reached! 🥳",
-                        message = "Congratulations! You have successfully reached your goal: ${goal.title}",
-                        category = "Goal",
-                        type = NotificationType.SAVINGS,
-                        userId = user.id
-                    ))
+                    try {
+                        notificationRepository.saveNotification(NotificationItem(
+                            title = "Goal Reached! 🥳",
+                            message = "Congratulations! You have successfully reached your goal: ${goal.title}",
+                            category = "Goal",
+                            type = NotificationType.SAVINGS,
+                            userId = user.id
+                        ))
+                    } catch (e: Exception) {
+                        Log.e("MainViewModel", "Error saving goal notification", e)
+                    }
                 }
             }
         }

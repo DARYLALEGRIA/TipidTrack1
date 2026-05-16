@@ -2,6 +2,7 @@ package com.example.tipidtrack
 
 import android.media.RingtoneManager
 import android.os.Bundle
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -13,7 +14,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import com.example.tipidtrack.model.ReportItem
 import com.example.tipidtrack.model.User
 import com.example.tipidtrack.model.UserRole
 import com.example.tipidtrack.repository.*
@@ -41,19 +41,20 @@ class MainActivity : ComponentActivity() {
         val auth = Firebase.auth
         val db = Firebase.firestore
 
-        // Manual Dependency Injection (Simple alternative to Hilt/Koin for this task)
         val userRepository = FirebaseUserRepository(auth, db)
         val expenseRepository = FirebaseExpenseRepository(db)
         val budgetRepository = FirebaseBudgetRepository(db)
         val goalRepository = FirebaseGoalRepository(db)
         val notificationRepository = FirebaseNotificationRepository(db)
+        val reportRepository = FirebaseReportRepository(db)
 
         viewModel = MainViewModel(
             userRepository,
             expenseRepository,
             budgetRepository,
             goalRepository,
-            notificationRepository
+            notificationRepository,
+            reportRepository
         )
 
         setContent {
@@ -61,7 +62,6 @@ class MainActivity : ComponentActivity() {
                 val context = LocalContext.current
                 var currentScreen by remember { mutableStateOf(Screen.LOGIN) }
 
-                // Observe state from ViewModel
                 val currentUser = viewModel.currentUser
                 val allUsers = viewModel.allUsers
                 val allExpenses = viewModel.allExpenses
@@ -69,20 +69,21 @@ class MainActivity : ComponentActivity() {
                 val allGoals = viewModel.allGoals
                 val notifications = viewModel.notifications
 
-                // Notification Sound Effect
-                LaunchedEffect(notifications.size) {
-                    if (notifications.isNotEmpty() && notifications.first().isRead == false) {
+                // Trigger sound whenever the latest notification changes and it is unread
+                val latestNotificationId = notifications.firstOrNull()?.id
+                LaunchedEffect(latestNotificationId) {
+                    val latest = notifications.firstOrNull()
+                    if (latest != null && latest.isRead == false) {
                         try {
                             val notificationUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
                             val r = RingtoneManager.getRingtone(context, notificationUri)
-                            r.play()
+                            r?.play()
                         } catch (e: Exception) {
-                            e.printStackTrace()
+                            Log.e("MainActivity", "Error playing notification sound", e)
                         }
                     }
                 }
 
-                // Initial Navigation Logic
                 LaunchedEffect(currentUser) {
                     if (currentUser != null && currentScreen == Screen.LOGIN) {
                         currentScreen = when (currentUser.role) {
@@ -104,10 +105,21 @@ class MainActivity : ComponentActivity() {
                         when (currentScreen) {
                             Screen.LOGIN -> LoginScreen(
                                 onLoginClick = { username, password ->
+                                    if (username.isBlank() || password.isBlank()) {
+                                        Toast.makeText(context, "Please enter both username and password", Toast.LENGTH_SHORT).show()
+                                        return@LoginScreen
+                                    }
                                     val email = if (username.contains("@")) username else "$username@tipidtrack.com"
+                                    
+                                    Toast.makeText(context, "Logging in...", Toast.LENGTH_SHORT).show()
+                                    
                                     auth.signInWithEmailAndPassword(email, password)
-                                        .addOnFailureListener {
-                                            Toast.makeText(context, "Invalid credentials", Toast.LENGTH_SHORT).show()
+                                        .addOnSuccessListener {
+                                            Log.d("MainActivity", "Auth success for $email")
+                                        }
+                                        .addOnFailureListener { e ->
+                                            Toast.makeText(context, "Login failed: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+                                            Log.e("MainActivity", "Login error", e)
                                         }
                                 },
                                 onRegisterClick = { currentScreen = Screen.REGISTER }
@@ -116,13 +128,23 @@ class MainActivity : ComponentActivity() {
                             Screen.REGISTER -> RegisterScreen(
                                 existingUsers = allUsers,
                                 onRegisterComplete = { newUser ->
-                                    val email = if (newUser.email?.contains("@") == true) newUser.email else "${newUser.email}@tipidtrack.com"
-                                    auth.createUserWithEmailAndPassword(email, newUser.password ?: "")
+                                    val emailInput = newUser.email ?: ""
+                                    val passwordInput = newUser.password ?: ""
+                                    if (emailInput.isBlank() || passwordInput.isBlank()) {
+                                        Toast.makeText(context, "Invalid registration details", Toast.LENGTH_SHORT).show()
+                                        return@RegisterScreen
+                                    }
+                                    val email = if (emailInput.contains("@")) emailInput else "$emailInput@tipidtrack.com"
+                                    
+                                    Toast.makeText(context, "Registering...", Toast.LENGTH_SHORT).show()
+                                    
+                                    auth.createUserWithEmailAndPassword(email, passwordInput)
                                         .addOnSuccessListener { result ->
                                             val uid = result.user?.uid ?: ""
                                             val startDateStr = SimpleDateFormat("MM/dd/yy", Locale.getDefault()).format(Date())
                                             val userToSave = newUser.copy(
                                                 id = uid,
+                                                email = email,
                                                 cycleStartDate = startDateStr
                                             )
                                             db.collection("users").document(uid).set(userToSave)
@@ -130,9 +152,12 @@ class MainActivity : ComponentActivity() {
                                                     Toast.makeText(context, "Registration Successful", Toast.LENGTH_SHORT).show()
                                                     currentScreen = Screen.LOGIN
                                                 }
+                                                .addOnFailureListener { e ->
+                                                    Toast.makeText(context, "Firestore Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                                                }
                                         }
                                         .addOnFailureListener { e ->
-                                            Toast.makeText(context, "Registration Failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                                            Toast.makeText(context, "Auth Failed: ${e.message}", Toast.LENGTH_SHORT).show()
                                         }
                                 },
                                 onBackToLogin = { currentScreen = Screen.LOGIN }
@@ -228,15 +253,17 @@ class MainActivity : ComponentActivity() {
 
                             Screen.BUDGETS -> BudgetsScreen(
                                 budgets = viewModel.budgetsWithSpent,
-                                hasExpenses = viewModel.filteredExpenses.isNotEmpty(),
-                                onAddBudget = { viewModel.addBudget(it) },
-                                onDeleteBudget = { viewModel.deleteBudget(it) },
+                                hasExpenses = true,
                                 user = currentUser,
                                 onUpdateProfileImage = { viewModel.updateProfileImage(it.toString()) },
                                 onLogout = { performLogout() },
                                 onHomeClick = { currentScreen = Screen.HOME },
                                 onExpensesClick = { currentScreen = Screen.EXPENSES },
                                 onReportsClick = { currentScreen = Screen.REPORTS },
+                                onAddBudget = { budget ->
+                                    viewModel.addBudget(budget)
+                                },
+                                onDeleteBudget = { viewModel.deleteBudget(it) },
                                 selectedCycle = viewModel.selectedCycleRange,
                                 availableCycles = CycleManager.getAllCycles(currentUser?.cycleStartDate),
                                 onCycleSelected = { viewModel.selectedCycleRange = it },
@@ -246,37 +273,27 @@ class MainActivity : ComponentActivity() {
 
                             Screen.REPORTS -> ReportsScreen(
                                 expenses = viewModel.filteredExpenses,
-                                budgets = viewModel.filteredBudgets,
+                                budgets = allBudgets,
+                                user = currentUser,
+                                onUpdateProfileImage = { viewModel.updateProfileImage(it.toString()) },
+                                onLogout = { performLogout() },
                                 onHomeClick = { currentScreen = Screen.HOME },
                                 onExpensesClick = { currentScreen = Screen.EXPENSES },
                                 onBudgetsClick = { currentScreen = Screen.BUDGETS },
-                                onUpdateProfileImage = { viewModel.updateProfileImage(it.toString()) },
-                                onLogout = { performLogout() },
-                                user = currentUser,
                                 selectedCycle = viewModel.selectedCycleRange,
                                 availableCycles = CycleManager.getAllCycles(currentUser?.cycleStartDate),
                                 onCycleSelected = { viewModel.selectedCycleRange = it },
                                 onNotificationClick = { currentScreen = Screen.NOTIFICATIONS },
-                                unreadNotificationsCount = notifications.count { it.isRead == false },
-                                onSaveReport = { notes ->
-                                    val report = ReportItem(
-                                        userId = currentUser?.id,
-                                        cycleRange = viewModel.selectedCycleRange?.let { CycleManager.formatCycle(it) } ?: "All Time",
-                                        totalSpent = viewModel.totalExpenses,
-                                        categoryBreakdown = viewModel.filteredExpenses.groupBy { (it.category ?: "Other").uppercase() }
-                                            .mapValues { entry -> entry.value.sumOf { it.amount?.replace("₱", "")?.replace(",", "")?.toDoubleOrNull() ?: 0.0 } },
-                                        notes = notes
-                                    )
-                                    db.collection("reports").document(report.id).set(report)
-                                        .addOnSuccessListener { Toast.makeText(context, "Report saved", Toast.LENGTH_SHORT).show() }
-                                }
+                                unreadNotificationsCount = notifications.count { it.isRead == false }
                             )
 
                             Screen.NOTIFICATIONS -> NotificationScreen(
                                 notifications = notifications,
                                 onBackClick = { currentScreen = Screen.HOME },
                                 onClearAllClick = { viewModel.clearNotifications() },
-                                onNotificationClick = { viewModel.markNotificationAsRead(it.id ?: "") }
+                                onNotificationClick = { notification ->
+                                    notification.id?.let { viewModel.markNotificationAsRead(it) }
+                                }
                             )
                         }
                     }

@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -183,11 +184,11 @@ fun DatePickerField(
 ) {
     var showDatePicker by remember { mutableStateOf(false) }
     
-    val initialMillis = if (selectedDate.isNotEmpty()) {
+    val initialMillis: Long = if (selectedDate.isNotEmpty()) {
         try {
             val formatter = SimpleDateFormat("MM/dd/yy", Locale.getDefault())
             formatter.timeZone = TimeZone.getTimeZone("UTC")
-            formatter.parse(selectedDate)?.time
+            formatter.parse(selectedDate)?.time ?: System.currentTimeMillis()
         } catch (e: Exception) {
             System.currentTimeMillis()
         }
@@ -617,7 +618,7 @@ fun NotificationScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onBackClick) {
-                Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
             }
             Text(
                 text = "Notifications",
