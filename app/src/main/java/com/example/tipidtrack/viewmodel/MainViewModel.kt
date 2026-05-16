@@ -117,8 +117,11 @@ class MainViewModel(
             notificationRepository.getNotifications(userId)
                 .catch { e -> Log.e("MainViewModel", "Error observing notifications", e) }
                 .collect { list ->
-                    notifications.clear()
-                    notifications.addAll(list)
+                    // Check if anything actually changed to avoid unnecessary triggers in UI
+                    if (notifications.size != list.size || notifications != list) {
+                        notifications.clear()
+                        notifications.addAll(list)
+                    }
                 }
         }
     }
@@ -144,12 +147,13 @@ class MainViewModel(
             notes = notes,
             userId = user.id
         )
+        val expenseAmount = parseAmount(amount)
         viewModelScope.launch {
             try {
                 expenseRepository.saveExpense(newItem)
-                // Pass the new item's ID to exclude it from the sum in checkBudgetsAndNotify
-                // This prevents double-counting if the Firestore listener updates allExpenses quickly.
-                checkBudgetsAndNotify(category, parseAmount(amount), newItem.id)
+                // Pass predicted values to avoid race conditions with Firestore listeners
+                checkBudgetsAndNotify(category, expenseAmount, newItem.id)
+                checkGoalsAndNotify(overrideBalance = balance - expenseAmount)
             } catch (e: Exception) {
                 Log.e("MainViewModel", "Error adding expense", e)
             }
@@ -157,9 +161,13 @@ class MainViewModel(
     }
 
     fun deleteExpense(id: String) {
+        val expense = allExpenses.find { it.id == id }
+        val amount = expense?.amount?.let { parseAmount(it) } ?: 0.0
         viewModelScope.launch {
             try {
                 expenseRepository.deleteExpense(id)
+                // After deleting, balance increases, check if goals are now met
+                checkGoalsAndNotify(overrideBalance = balance + amount)
             } catch (e: Exception) {
                 Log.e("MainViewModel", "Error deleting expense", e)
             }
@@ -172,6 +180,8 @@ class MainViewModel(
         viewModelScope.launch {
             try {
                 budgetRepository.saveBudget(budget.copy(date = currentDate, userId = user.id))
+                // When adding a budget, check if current spending already exceeds it
+                checkBudgetsAndNotify(budget.category ?: "", 0.0)
             } catch (e: Exception) {
                 Log.e("MainViewModel", "Error adding budget", e)
             }
@@ -217,7 +227,8 @@ class MainViewModel(
         viewModelScope.launch {
             try {
                 userRepository.saveUser(user.copy(totalAllowance = newAllowance))
-                checkGoalsAndNotify()
+                // Predict new balance for goal check
+                checkGoalsAndNotify(overrideBalance = balance + amount)
             } catch (e: Exception) {
                 Log.e("MainViewModel", "Error adding allowance", e)
             }
@@ -284,8 +295,10 @@ class MainViewModel(
 
     private suspend fun checkBudgetsAndNotify(category: String, addedAmount: Double, excludeExpenseId: String? = null) {
         val user = currentUser ?: return
-        val budgetItem = allBudgets.find { 
-            it.userId == user.id && it.category?.trim().equals(category.trim(), ignoreCase = true) == true 
+        
+        // Use filteredBudgets to ensure we check against the budget for the current cycle
+        val budgetItem = filteredBudgets.find { 
+            it.category?.trim().equals(category.trim(), ignoreCase = true) == true 
         } ?: return
         
         val budgetLimit = parseAmount(budgetItem.budget ?: "0")
@@ -326,8 +339,11 @@ class MainViewModel(
         }
 
         if (newNotif != null) {
-            val recentlyNotified = notifications.take(5).any { 
-                it.type == newNotif.type && it.category == newNotif.category && (System.currentTimeMillis() - (it.timestamp ?: 0)) < 10000 
+            val recentlyNotified = notifications.take(10).any { 
+                it.type == newNotif.type && 
+                it.category == newNotif.category && 
+                it.message == newNotif.message &&
+                (System.currentTimeMillis() - (it.timestamp ?: 0)) < 10000 
             }
             if (!recentlyNotified) {
                 try {
@@ -339,14 +355,17 @@ class MainViewModel(
         }
     }
 
-    private suspend fun checkGoalsAndNotify() {
+    private suspend fun checkGoalsAndNotify(overrideBalance: Double? = null) {
         val user = currentUser ?: return
-        val currentBalance = balance
+        val currentBalance = overrideBalance ?: balance
         allGoals.forEach { goal ->
             val target = goal.targetAmount ?: 0.0
             if (currentBalance >= target && target > 0) {
+                // Check if already notified for this goal recently or if unread exists
                 val alreadyNotified = notifications.any { 
-                    it.type == NotificationType.SAVINGS && it.title?.contains(goal.title ?: "") == true
+                    it.type == NotificationType.SAVINGS && 
+                    it.title?.contains(goal.title ?: "") == true &&
+                    (it.isRead == false || (System.currentTimeMillis() - (it.timestamp ?: 0)) < 86400000)
                 }
                 if (!alreadyNotified) {
                     try {

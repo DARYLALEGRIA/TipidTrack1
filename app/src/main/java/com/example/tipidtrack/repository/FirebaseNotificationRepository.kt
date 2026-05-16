@@ -2,7 +2,6 @@ package com.example.tipidtrack.repository
 
 import com.example.tipidtrack.model.NotificationItem
 import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.Query
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -15,13 +14,15 @@ class FirebaseNotificationRepository(
     override fun getNotifications(userId: String): Flow<List<NotificationItem>> = callbackFlow {
         val listener = db.collection("notifications")
             .whereEqualTo("userId", userId)
-            .orderBy("timestamp", Query.Direction.DESCENDING)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
                     close(error)
                     return@addSnapshotListener
                 }
-                val notifications = snapshot?.documents?.mapNotNull { it.toObject(NotificationItem::class.java)?.copy(id = it.id) } ?: emptyList()
+                val notifications = snapshot?.documents?.mapNotNull { doc ->
+                    doc.toObject(NotificationItem::class.java)?.copy(id = doc.id)
+                }?.sortedByDescending { it.timestamp ?: 0L } ?: emptyList()
+
                 trySend(notifications)
             }
         awaitClose { listener.remove() }

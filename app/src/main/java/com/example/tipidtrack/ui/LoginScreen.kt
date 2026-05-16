@@ -1,5 +1,6 @@
 package com.example.tipidtrack.ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -47,7 +48,7 @@ fun LoginScreen(
     
     LaunchedEffect(isLoading) {
         if (isLoading) {
-            delay(8000) // Re-enable after 8 seconds if nothing happens
+            delay(10000) // Re-enable after 10 seconds if nothing happens
             isLoading = false
         }
     }
@@ -163,7 +164,7 @@ fun RegisterScreen(
     var phone by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
-    val selectedRole = UserRole.STUDENT
+    var selectedRole by remember { mutableStateOf(UserRole.STUDENT) }
     var mpin by remember { mutableStateOf("") }
     var confirmMpin by remember { mutableStateOf("") }
     var agreedToTerms by remember { mutableStateOf(false) }
@@ -174,6 +175,8 @@ fun RegisterScreen(
     var passwordError by remember { mutableStateOf<String?>(null) }
     var confirmPasswordError by remember { mutableStateOf(false) }
     var mpinConfirmError by remember { mutableStateOf(false) }
+
+    val adminExists = remember(existingUsers) { existingUsers.any { it.role == UserRole.ADMIN } }
 
     fun validatePassword(pass: String): String? {
         if (pass.length < 8) return "Password must be at least 8 characters"
@@ -212,15 +215,80 @@ fun RegisterScreen(
 
         when (currentStep) {
             RegisterStep.DETAILS -> {
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text("Full Name", color = Color.White) },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = registerTextFieldColors()
-                )
-                
-                Spacer(modifier = Modifier.height(16.dp))
+                // Role Selection - Only display if admin does not exist yet
+                if (!adminExists) {
+                    Text(
+                        text = "Select Role",
+                        color = Color.White,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.align(Alignment.Start)
+                    )
+                    
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        // Student Role
+                        Surface(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(50.dp)
+                                .clickable { selectedRole = UserRole.STUDENT },
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (selectedRole == UserRole.STUDENT) Color.White else Color.White.copy(alpha = 0.2f),
+                            border = if (selectedRole == UserRole.STUDENT) null else BorderStroke(1.dp, Color.White.copy(alpha = 0.5f))
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(
+                                    text = "STUDENT",
+                                    color = if (selectedRole == UserRole.STUDENT) Color(0xFF2D4B8E) else Color.White,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+
+                        // Admin Role
+                        Surface(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(50.dp)
+                                .clickable { selectedRole = UserRole.ADMIN },
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (selectedRole == UserRole.ADMIN) Color.White else Color.White.copy(alpha = 0.2f),
+                            border = if (selectedRole == UserRole.ADMIN) null else BorderStroke(1.dp, Color.White.copy(alpha = 0.5f))
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(
+                                    text = "ADMIN",
+                                    color = if (selectedRole == UserRole.ADMIN) Color(0xFF2D4B8E) else Color.White,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                } else {
+                    // Force student role if admin already exists
+                    SideEffect {
+                        if (selectedRole == UserRole.ADMIN) {
+                            selectedRole = UserRole.STUDENT
+                        }
+                    }
+                }
+
+                if (selectedRole != UserRole.ADMIN) {
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = { name = it },
+                        label = { Text("Full Name", color = Color.White) },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = registerTextFieldColors()
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
                 
                 OutlinedTextField(
                     value = email,
@@ -232,16 +300,17 @@ fun RegisterScreen(
                 
                 Spacer(modifier = Modifier.height(16.dp))
                 
-                OutlinedTextField(
-                    value = phone,
-                    onValueChange = { phone = it },
-                    label = { Text("Phone Number", color = Color.White) },
-                    modifier = Modifier.fillMaxWidth(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-                    colors = registerTextFieldColors()
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
+                if (selectedRole != UserRole.ADMIN) {
+                    OutlinedTextField(
+                        value = phone,
+                        onValueChange = { phone = it },
+                        label = { Text("Phone Number", color = Color.White) },
+                        modifier = Modifier.fillMaxWidth(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                        colors = registerTextFieldColors()
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
                 
                 Column {
                     OutlinedTextField(
@@ -304,8 +373,14 @@ fun RegisterScreen(
                         } else if (password != confirmPassword) {
                             confirmPasswordError = true
                         } else {
-                            if (name.isNotBlank() && email.isNotBlank() && phone.isNotBlank()) {
-                                currentStep = RegisterStep.MPIN_SETUP
+                            if (selectedRole == UserRole.ADMIN) {
+                                if (email.isNotBlank()) {
+                                    currentStep = RegisterStep.TERMS
+                                }
+                            } else {
+                                if (name.isNotBlank() && email.isNotBlank() && phone.isNotBlank()) {
+                                    currentStep = RegisterStep.MPIN_SETUP
+                                }
                             }
                         }
                     },
@@ -342,11 +417,12 @@ fun RegisterScreen(
                         if (agreedToTerms) {
                             val newUser = User(
                                 id = UUID.randomUUID().toString(),
-                                name = name.trim(),
+                                name = if (selectedRole == UserRole.ADMIN) "Administrator" else name.trim(),
                                 email = email.trim(),
+                                phone = if (selectedRole == UserRole.ADMIN) "" else phone.trim(),
                                 password = password,
                                 role = selectedRole,
-                                mpin = mpin
+                                mpin = if (selectedRole == UserRole.ADMIN) "" else mpin
                             )
                             onRegisterComplete(newUser)
                         }
